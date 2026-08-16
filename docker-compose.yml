@@ -2,7 +2,7 @@ services:
   research-studio:
     build: .
     ports:
-      - "3000:3000"
+      - "3034:3034"
     environment:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@norug.es}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-norug-demo}
@@ -12,7 +12,7 @@ services:
       - research-data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3034/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
