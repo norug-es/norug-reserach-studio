@@ -1,78 +1,88 @@
-# NoRug Research Studio
+# NoRug Research Studio v0.3
 
-Plataforma SaaS de investigación multiárea que transforma fuentes verificables en informes, guiones y contenido audiovisual mediante inteligencia artificial, automatización y supervisión humana.
+MVP SaaS local para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Esta versión funciona con **Next.js puro** y no contiene Vite, Vinext, Wrangler ni Cloudflare Workers.
 
-## Estado
+## Qué funciona realmente
 
-**V0.1 — prototipo funcional de experiencia de usuario.**
-
-Esta versión permite validar el flujo de trabajo y la interfaz. Las integraciones externas, persistencia, facturación y procesamiento audiovisual todavía están simulados.
-
-## Funcionalidades
-
-- Área de investigación configurable.
+- Acceso local mediante cookie de sesión firmada.
+- Proyectos con área de investigación, idioma, salida y estado.
+- Persistencia SQLite mediante el módulo nativo `node:sqlite`.
+- Registro de fuentes web, vídeo, RSS, documentos, APIs y redes sociales.
+- Centro de evidencias con clasificación, confianza y hash SHA-256.
 - Pipeline visual de 17 pasos agrupado en cinco fases.
-- Puntos de aprobación humana antes del guion y la publicación.
-- Centro de evidencias con fuente, clasificación y nivel de confianza.
-- Paneles de fuentes, actividad y controles editoriales.
-- Interfaz responsive con identidad NoRug.es.
-- Arquitectura preparada para proveedores de IA intercambiables.
+- Pausa y reanudación persistente del pipeline.
+- Aprobaciones o rechazos humanos con registro del revisor.
+- Registro de actividad auditable.
+- Exportación del manifiesto de evidencias en JSON.
+- API REST protegida por sesión.
+- Endpoint de salud y compilación standalone para Docker/VPS.
 
-## Principios
+Los conectores externos, IA generativa, Whisper, FFmpeg, colas, facturación y montaje audiovisual permanecen en el roadmap. La interfaz no pretende simular que esos servicios ya están conectados.
 
-- Evidencia antes que narrativa.
-- Fuentes primarias y trazabilidad por afirmación.
-- Separación entre contenido verificado, probable, hipotético y no demostrado.
-- Supervisión humana en decisiones editoriales críticas.
-- Minimización del lock-in de proveedores.
-- Respeto por copyright, atribución y licencias.
-
-## Stack de la V0.1
-
-- React 19
-- Next.js 16
-- TypeScript
-- Tailwind CSS 4
-- Vinext / Vite
-- Cloudflare Workers compatible
-
-## Ejecución local
-
-Requisitos:
+## Requisitos
 
 - Node.js 22.13 o superior.
-- npm.
-- Linux, WSL2 o un entorno compatible con los scripts Bash incluidos.
+- npm 10 o superior.
+- Windows, macOS o Linux.
 
-```bash
-npm ci
+## Ejecutar en VS Code (Windows)
+
+Abre la carpeta del proyecto en VS Code y ejecuta:
+
+```powershell
+Copy-Item .env.example .env.local
+npm install
 npm run dev
 ```
 
-Para generar la versión de producción:
+Abre `http://localhost:3000`.
 
-```bash
-npm run build
+Credenciales iniciales:
+
+```text
+Email: admin@norug.es
+Contraseña: norug-demo
 ```
 
-## Roadmap
+Antes de usarlo fuera de local cambia `ADMIN_EMAIL`, `ADMIN_PASSWORD` y `AUTH_SECRET` en `.env.local`.
 
-- Backend multiusuario y autenticación.
-- PostgreSQL, colas de trabajo y almacenamiento de objetos.
-- Conectores para YouTube, Twitch, RSS, web, documentos y APIs.
-- Whisper para transcripción y FFmpeg para procesamiento audiovisual.
-- RAG con búsqueda semántica y deduplicación histórica.
-- Registro de procedencia y hashes SHA-256 por evidencia.
-- Adaptadores para modelos OpenAI, Anthropic, Google y modelos locales.
-- Facturación por suscripción y consumo.
-- Exportación de informes, guiones, podcasts y paquetes de edición.
+## Validación
 
-## Seguridad y límites
+```powershell
+npm run lint
+npm run test:structure
+npm run build
+npm start
+```
 
-No introduzcas claves API en el repositorio. Utiliza variables de entorno y un gestor de secretos. El contenido generado por IA debe revisarse antes de publicarse y no constituye evidencia primaria.
+La base de datos se crea automáticamente en `data/research-studio.db` y carga una investigación demostrativa la primera vez.
 
-## Licencia
+## API
+
+| Método | Ruta | Función |
+|---|---|---|
+| `GET` | `/api/health` | Estado de Next.js y SQLite |
+| `POST` | `/api/auth/login` | Crear sesión local |
+| `POST` | `/api/auth/logout` | Cerrar sesión |
+| `GET/POST` | `/api/projects` | Listar y crear investigaciones |
+| `GET/PATCH` | `/api/projects/:id` | Snapshot y estado del proyecto |
+| `GET/POST` | `/api/projects/:id/sources` | Fuentes |
+| `GET/POST` | `/api/projects/:id/evidence` | Evidencias y hashes |
+| `GET/POST` | `/api/projects/:id/approvals` | Control humano |
+| `GET` | `/api/export/evidence?projectId=:id` | Manifiesto JSON |
+
+## Estructura
+
+```text
+app/          páginas y Route Handlers
+components/   interfaz interactiva
+lib/          sesión, SQLite, repositorio y tipos
+data/         base SQLite local, ignorada por Git
+tests/        controles estructurales
+```
+
+## Producción
+
+La configuración genera `.next/standalone`. Para una instalación SaaS real deben reemplazarse las credenciales locales por un proveedor de identidad, mover SQLite a PostgreSQL cuando exista concurrencia multiinstancia y usar un gestor de secretos.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.
-
-La licencia comercial y de contribución se definirá antes de la primera versión pública estable.
