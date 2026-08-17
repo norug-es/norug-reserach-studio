@@ -86,3 +86,5 @@
 * [ ] Exportación de expedientes y manifiestos de evidencia.
 
 **Estado real:** la V0.1 implementa la experiencia visual e interactiva. La ingestión, IA, transcripción, almacenamiento, facturación y producción audiovisual todavía deben conectarse al backend.
+
+
