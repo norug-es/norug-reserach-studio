@@ -1,10 +1,13 @@
-# NoRug Research Studio v0.5.3
+# NoRug Research Studio v0.6.0
 
 MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Funciona con **Next.js puro y PostgreSQL**; no utiliza Vite, Vinext, Wrangler ni Cloudflare Workers.
 
 ## Qué funciona realmente
 
-- Usuarios persistentes y sesión firmada con cookie `HttpOnly`.
+- Usuarios persistentes y sesiones opacas revocables; la cookie `HttpOnly` nunca contiene identidad ni permisos.
+- Vista de dispositivos, cierre individual o global de sesiones y cambio de contraseña autenticado.
+- Rate limiting persistente en login, recuperación, restablecimiento, invitaciones y cambio de contraseña.
+- Protección de todas las mutaciones mediante validación de `Origin` y auditoría de eventos de seguridad.
 - Workspaces con roles `owner`, `admin`, `editor`, `reviewer` y `viewer`.
 - Administración visual de miembros, cambio de roles y expulsión protegida del `owner`.
 - Revalidación de membresía y rol en PostgreSQL en cada petición autenticada.
@@ -21,14 +24,21 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - API REST protegida por sesión.
 - Endpoints separados de vida (`/api/live`) y disponibilidad (`/api/health`).
 - Docker Compose con aplicación, PostgreSQL y healthchecks.
+- CI con PostgreSQL 18, prueba negativa RLS, lint, pruebas y build.
+- Backup PostgreSQL con checksum y restauración de prueba en una base aislada.
+- Almacenamiento privado S3-compatible: MinIO local y compatibilidad con S3/R2 en producción.
+- Carga controlada de documentos, audio y vídeo, deduplicada por SHA-256.
+- Cola Redis/BullMQ con worker independiente, reintentos exponenciales y estado `dead_letter`.
+- Outbox PostgreSQL transaccional para no perder trabajos cuando Redis no está disponible.
+- Verificación del contenido almacenado por tamaño y hash antes de marcarlo como listo.
 
-Los conectores externos, IA generativa, Whisper, FFmpeg, colas, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
+Los conectores externos, IA generativa, Whisper, FFmpeg, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
 
 ## Requisitos
 
 - Node.js 22.13 o superior.
 - npm 10 o superior.
-- Docker Desktop para levantar PostgreSQL localmente.
+- Docker Desktop para levantar PostgreSQL, Redis, MinIO y el worker localmente.
 
 ## Inicio rápido con Docker
 
@@ -45,11 +55,11 @@ La v0.5 utiliza un usuario PostgreSQL de aplicación sin privilegios `SUPERUSER`
 
 ## Desarrollo en VS Code
 
-Levanta solo PostgreSQL:
+Levanta las dependencias y el worker:
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d postgres
+docker compose up -d postgres redis minio ingestion-worker
 npm install
 npm run db:migrate
 npm run dev
@@ -63,6 +73,10 @@ Contraseña: norug-demo
 ```
 
 La contraseña se almacena mediante `scrypt` dentro de PostgreSQL. Antes de producción cambia `AUTH_SECRET`, `IDENTITY_WEBHOOK_SECRET` y las dos contraseñas PostgreSQL. OIDC continúa pendiente: Auth.js v5 sigue distribuido como beta, por lo que esta versión evita introducirlo como dependencia crítica y conserva una frontera de identidad reemplazable.
+
+Al aplicar la migración 5, las cookies firmadas de versiones anteriores dejan de ser válidas: cada usuario debe iniciar sesión una vez para crear su sesión persistente revocable.
+
+La migración 6 añade `stored_objects`, `processing_jobs` y el outbox. Los dos primeros aplican RLS forzada. MinIO queda disponible en `http://localhost:9000` y su consola en `http://localhost:9001`.
 
 ## Reparación al actualizar desde v0.5.1–v0.5.2
 
@@ -114,17 +128,71 @@ El importador conserva identificadores, fechas, relaciones y hashes. Puede ejecu
 
 Para Supabase, Neon, RDS u otro PostgreSQL gestionado, utiliza su `DATABASE_URL`, activa `DATABASE_SSL=true` cuando corresponda y no expongas credenciales en Git.
 
+## Almacenamiento y cola
+
+| Variable | Uso |
+|---|---|
+| `S3_ENDPOINT` | Endpoint interno S3-compatible usado por aplicación y worker |
+| `S3_PUBLIC_ENDPOINT` | Endpoint HTTPS alcanzable por el navegador para descargas firmadas |
+| `S3_BUCKET` | Bucket privado de investigaciones |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Credenciales del bucket |
+| `S3_FORCE_PATH_STYLE` | Necesario para MinIO; normalmente `false` en AWS S3 |
+| `S3_AUTO_CREATE_BUCKET` | Solo desarrollo; en producción el bucket se aprovisiona previamente |
+| `UPLOAD_MAX_BYTES` | Límite por archivo; 52.428.800 bytes por defecto |
+| `REDIS_URL` | Redis de BullMQ; usa `rediss://` fuera de red privada/local |
+| `WORKER_CONCURRENCY` | Trabajos concurrentes por instancia del worker |
+
 ## Identidad e invitaciones
 
 | Variable | Uso |
 |---|---|
 | `APP_URL` | Origen público usado para construir enlaces de invitación y recuperación |
-| `AUTH_SECRET` | Firma de la sesión local; utiliza al menos 32 caracteres aleatorios |
+| `AUTH_SECRET` | Secreto para derivar identificadores privados de seguridad; utiliza al menos 32 caracteres aleatorios |
 | `AUTH_COOKIE_SECURE` | Cookie solo HTTPS; en producción debe ser `true` |
 | `IDENTITY_WEBHOOK_URL` | Endpoint de entrega de email o automatización, por ejemplo un webhook de n8n |
 | `IDENTITY_WEBHOOK_SECRET` | Firma HMAC independiente de los eventos de identidad |
 
 El webhook recibe JSON con `type`, `email`, `url`, `workspace` cuando corresponda y `occurredAt`. La cabecera `x-norug-signature` contiene `sha256=<HMAC hexadecimal>` calculado sobre el cuerpo exacto. En desarrollo, si no hay webhook, la interfaz muestra el enlace de prueba; en producción no expone tokens en la respuesta.
+
+Antes de desplegar, valida las variables críticas:
+
+```powershell
+npm run env:production-check
+```
+
+El comando exige HTTPS, cookie segura, secretos independientes de al menos 32 caracteres, rol PostgreSQL no administrativo, TLS para bases remotas y webhook de identidad configurado.
+
+## Backup y restauración comprobada
+
+Con PostgreSQL de Docker en ejecución:
+
+```powershell
+npm run backup:db
+npm run backup:verify -- -BackupPath .\backups\norug-research-AAAAMMDD-HHMMSS.dump
+```
+
+El primer comando genera un dump en formato custom y su checksum SHA-256. El segundo restaura el dump en `norug_research_restore_check`, comprueba migraciones y proyectos, y elimina esa base temporal. Nunca restaura sobre `norug_research`.
+
+Este backup cubre PostgreSQL, no los objetos de S3/MinIO. En producción debes aplicar versionado y una política de réplica o backup independiente al bucket.
+
+## Ingesta y worker
+
+Formatos iniciales: PDF, DOCX, TXT, Markdown, CSV, MP3, WAV, M4A, MP4, WEBM y MOV. El límite por defecto es 50 MB y se configura con `UPLOAD_MAX_BYTES`.
+
+```powershell
+docker compose up -d postgres redis minio ingestion-worker
+npm run db:migrate
+npm run ingestion:health-check
+npm run dev
+```
+
+Para ejecutar el worker directamente fuera de Docker:
+
+```powershell
+npm run worker:dev
+```
+
+La v0.6.0 verifica almacenamiento e integridad. Todavía no extrae texto, transcribe audio ni analiza malware; esas funciones pertenecen a v0.6.1 y posteriores.
 
 ## Validación
 
@@ -132,6 +200,9 @@ El webhook recibe JSON con `type`, `email`, `url`, `workspace` cuando correspond
 npm run lint
 npm run test:structure
 npm run test:identity
+npm run test:security
+npm run test:ingestion
+npm run typecheck:worker
 npm run build
 npm run test:db
 ```
@@ -148,7 +219,13 @@ npm run test:db
 | `POST` | `/api/auth/logout` | Cerrar sesión |
 | `POST` | `/api/auth/password/forgot` | Solicitar recuperación sin revelar si el usuario existe |
 | `POST` | `/api/auth/password/reset` | Consumir token y establecer una nueva contraseña |
+| `POST` | `/api/account/password` | Cambiar contraseña y revocar todas las sesiones |
+| `DELETE` | `/api/account/sessions` | Revocar todas las demás sesiones |
+| `DELETE` | `/api/account/sessions/:id` | Revocar una sesión propia |
 | `POST` | `/api/invitations/accept` | Aceptar invitación y crear la sesión |
+| `GET/POST` | `/api/projects/:id/uploads` | Listar o cargar objetos de investigación |
+| `GET` | `/api/objects/:id/download` | Descarga privada mediante URL temporal firmada |
+| `POST` | `/api/jobs/:id/retry` | Reintentar un trabajo fallido o en dead-letter |
 | `GET/POST` | `/api/projects` | Listar y crear investigaciones |
 | `GET/POST` | `/api/workspaces` | Listar y crear workspaces |
 | `POST` | `/api/workspaces/switch` | Cambiar el workspace de la sesión |
@@ -173,7 +250,14 @@ lib/workspaces.ts    usuarios, workspaces, membresías e invitaciones
 lib/identity.ts      recuperación y entrega de eventos firmados
 lib/passwords.ts     política, hash y verificación de contraseñas
 lib/permissions.ts   matriz de permisos por rol
+lib/sessions.ts      sesiones opacas persistentes y revocación
+lib/security.ts      origen, rate limiting y auditoría de seguridad
+lib/storage.ts       cliente S3-compatible y URLs temporales
+lib/ingestion.ts     objetos, jobs, outbox e idempotencia
+lib/queue.ts         conexión BullMQ/Redis
 scripts/migrate.ts   migración manual
+scripts/ingestion-worker.ts worker independiente
+scripts/*postgres*   backup y restauración aislada
 tests/               checklist estructural e integración PostgreSQL
 ```
 
@@ -181,6 +265,6 @@ tests/               checklist estructural e integración PostgreSQL
 
 La compilación genera `.next/standalone`. Publica el servicio detrás de Caddy, Nginx o Traefik con HTTPS y deja `AUTH_COOKIE_SECURE=true`. El número total de conexiones es `DATABASE_POOL_MAX × instancias`; ajústalo al límite del servidor o incorpora PgBouncer al escalar horizontalmente.
 
-`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.5.3 completa recuperación de contraseña y ciclo de invitaciones e incorpora los hotfixes de compilación, entorno y rol PostgreSQL. Antes de producción todavía hay que seleccionar e integrar un proveedor OIDC estable, ejecutar las pruebas RLS contra la infraestructura de destino y disponer de backups/restauración verificados.
+`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.0 añade la base de ingesta sin cerrar todavía extracción, Whisper ni antimalware. Antes de producción todavía hay que seleccionar un proveedor OIDC estable, conectar un gestor externo de secretos, usar TLS en PostgreSQL/Redis/S3 y programar backups coordinados de base de datos y objetos.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

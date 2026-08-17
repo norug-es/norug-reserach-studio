@@ -1,7 +1,7 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.5.3 Identity & Teams Hotfix**  
-Base analizada: `main@7bc16f10743ae3ecac3cad2b2c8e40e79ef075c0`  
+Versión revisada: **v0.6.0 Ingestion Foundation**  
+Base analizada: paquete local **v0.6.0**  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ## Configuración
@@ -19,20 +19,20 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [ ] Monitorizar canales de YouTube.
 - [ ] Incorporar vídeos o directos de Twitch.
 - [ ] Recopilar noticias, páginas web y RSS.
-- [ ] Importar PDF, DOCX, TXT y otros documentos.
+- [-] Importar PDF, DOCX, TXT, Markdown y CSV; almacenamiento listo, extracción pendiente.
 - [ ] Conectar APIs y fuentes personalizadas.
 - [ ] Filtrar fuentes por fechas, temas y relevancia.
 - [ ] Permitir que el humano seleccione qué materiales procesar.
 
 ## Procesamiento
 
-- [ ] Descargar vídeo, audio y metadatos.
+- [-] Almacenar vídeo y audio con metadatos e integridad; conectores de descarga pendientes.
 - [ ] Transcribir automáticamente con Whisper.
 - [ ] Utilizar GPU/CUDA cuando esté disponible.
 - [ ] Generar marcas de tiempo precisas.
-- [ ] Normalizar los datos obtenidos.
-- [ ] Ejecutar tareas concurrentes mediante workers y colas.
-- [ ] Implementar reintentos, idempotencia y cola de errores.
+- [ ] Normalizar el contenido obtenido.
+- [x] Ejecutar tareas concurrentes mediante worker independiente y BullMQ/Redis.
+- [x] Implementar outbox, reintentos exponenciales, idempotencia y estado `dead_letter`.
 
 ## Investigación y verificación
 
@@ -40,7 +40,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Diferenciar entre verificado, probable, hipotético y no demostrado.
 - [x] Vincular cada afirmación con su fuente.
 - [x] Generar hashes SHA-256 para las evidencias.
-- [-] Exportar manifiesto firmado por hash; falta custodia de artefactos binarios.
+- [x] Exportar manifiesto firmado por hash incluyendo la custodia de objetos binarios.
 - [ ] Cruzar información entre varias fuentes.
 - [ ] Detectar contradicciones.
 - [ ] Priorizar fuentes primarias.
@@ -96,33 +96,41 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Roles `owner`, `admin`, `editor`, `reviewer` y `viewer` aplicados en la API.
 - [x] Aceptación y revocación de invitaciones con token de un solo uso y caducidad.
 - [x] Recuperación de contraseña con token temporal y política de contraseña fuerte.
+- [x] Sesiones opacas persistentes, caducidad, listado por dispositivo y revocación individual o global.
+- [x] Cambio de contraseña autenticado y cierre automático de todas las sesiones.
+- [x] Rate limiting persistente en los flujos de identidad sensibles.
+- [x] Validación de origen en todas las mutaciones contra CSRF de origen cruzado.
+- [x] Auditoría de accesos, credenciales, sesiones, invitaciones y administración del workspace.
 - [x] Administración visual de miembros y cambio de roles, protegiendo al `owner`.
 - [x] Usuario PostgreSQL de aplicación sin `SUPERUSER` ni `BYPASSRLS` en Docker.
 - [x] Registro persistente de actividad.
 - [x] Exportación del manifiesto de evidencias.
 - [x] Liveness y readiness con diagnóstico PostgreSQL.
-- [ ] Almacenamiento de archivos en S3/R2/MinIO.
+- [x] Almacenamiento privado en S3/R2/MinIO con descarga temporal firmada.
+- [x] Deduplicación por SHA-256 y verificación de integridad desde el worker.
+- [ ] Análisis antimalware y cuarentena efectiva antes de procesar contenido.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
 - [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.
 - [ ] Logs estructurados, métricas y trazas distribuidas.
-- [ ] Backups automáticos y prueba documentada de restauración.
+- [-] Backup con checksum y restauración aislada implementados; falta programarlos y probarlos en destino.
+- [x] CI con PostgreSQL 18, prueba RLS, pruebas unitarias, lint y build.
 
 ## Siguientes pasos priorizados
 
 ### P0 — Base SaaS segura
 
 1. Seleccionar e incorporar un proveedor OIDC estable; Auth.js v5 continúa como beta.
-2. Incorporar cambio de contraseña para sesiones autenticadas y cierre de todas las sesiones activas.
-3. Ejecutar las pruebas negativas RLS contra la infraestructura de destino.
-4. Backups automáticos, restauración probada y secretos externos.
+2. Ejecutar las pruebas negativas RLS contra la infraestructura de destino.
+3. Ejecutar la restauración de prueba en destino y programar backups con retención.
+4. Conectar un gestor externo de secretos.
 
 ### P1 — Ingesta y procesamiento
 
-1. Almacenamiento de objetos para documentos, audio y vídeo.
-2. Cola de trabajos con Redis/BullMQ o un worker equivalente.
-3. Conectores YouTube, RSS/web y carga documental.
-4. Whisper con marcas de tiempo, reintentos e idempotencia.
+1. Extracción documental y análisis antimalware.
+2. Whisper con marcas de tiempo y uso opcional de CUDA.
+3. Conectores YouTube, RSS/web y aprobación de fuentes.
+4. Normalización, métricas y políticas de retención de objetos.
 
 ### P2 — Inteligencia editorial
 
@@ -144,8 +152,9 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Todas las entidades de investigación incluyen `tenant_id` obligatorio.
 - [x] PostgreSQL RLS utiliza el contexto transaccional `app.tenant_id`.
 - [x] Docker crea un rol de aplicación `NOSUPERUSER NOBYPASSRLS`.
-- [x] La sesión contiene usuario, workspace activo y rol.
+- [x] La sesión persistente referencia usuario y workspace activo; el rol se revalida en PostgreSQL.
 - [x] Las mutaciones aplican una matriz de permisos por rol.
 - [ ] Ejecutar `npm run test:db` contra la infraestructura PostgreSQL de destino antes del despliegue final.
 - [x] Completar recuperación de contraseña y ciclo de invitaciones.
-- [ ] Completar OIDC, prueba RLS de destino y recuperación operativa antes de producción.
+- [-] Herramientas de backup/restauración listas; falta ejecución programada y validación en destino.
+- [ ] Completar OIDC, prueba RLS de destino y gestión externa de secretos antes de producción.

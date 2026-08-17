@@ -1,6 +1,7 @@
 import { apiUser, authorized, badRequest, forbidden, serverError, tenantContext, unauthorized } from "@/lib/api";
 import { createEvidence, getProject, listEvidence } from "@/lib/repository";
 import type { EvidenceClassification } from "@/lib/types";
+import { mutationOriginError } from "@/lib/security";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -14,6 +15,8 @@ export async function GET(_request: Request, { params }: Context) {
 }
 
 export async function POST(request: Request, { params }: Context) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "evidence:create")) return forbidden();

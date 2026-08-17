@@ -6,3 +6,6 @@ node_modules
 data
 *.log
 npm-debug.log*
+backups
+.npm-cache
+.npm-logs

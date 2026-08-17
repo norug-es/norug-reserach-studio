@@ -13,9 +13,18 @@
     "lib/permissions.ts",
     "lib/passwords.ts",
     "lib/identity.ts",
+    "lib/security.ts",
+    "lib/sessions.ts",
     "lib/workspaces.ts",
+    "lib/ingestion.ts",
+    "lib/queue.ts",
+    "lib/storage.ts",
+    "lib/upload-policy.ts",
     "scripts/check-env.ts",
+    "scripts/check-production-env.ts",
     "scripts/migrate.ts",
-    "scripts/import-sqlite.ts"
+    "scripts/import-sqlite.ts",
+    "scripts/ingestion-worker.ts",
+    "scripts/check-ingestion.ts"
   ]
 }

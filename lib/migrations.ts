@@ -312,6 +312,150 @@ const migrations: Migration[] = [
         ON password_reset_tokens(expires_at) WHERE used_at IS NULL;
     `,
   },
+  {
+    version: 5,
+    name: "production_security_hardening",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash CHAR(64) NOT NULL UNIQUE,
+        active_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+        user_agent TEXT NOT NULL DEFAULT '',
+        ip_hash CHAR(64),
+        expires_at TIMESTAMPTZ NOT NULL,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        revoked_at TIMESTAMPTZ,
+        revoked_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_user_active
+        ON user_sessions(user_id, expires_at DESC)
+        WHERE revoked_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_expiry
+        ON user_sessions(expires_at) WHERE revoked_at IS NULL;
+
+      CREATE TABLE IF NOT EXISTS security_rate_limits (
+        action TEXT NOT NULL,
+        key_hash CHAR(64) NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        window_started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        blocked_until TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (action, key_hash)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_security_rate_limits_cleanup
+        ON security_rate_limits(updated_at);
+
+      CREATE TABLE IF NOT EXISTS security_audit_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+        event_type TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure', 'blocked')),
+        ip_hash CHAR(64),
+        user_agent TEXT NOT NULL DEFAULT '',
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_security_audit_user_created
+        ON security_audit_events(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_security_audit_workspace_created
+        ON security_audit_events(workspace_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_security_audit_type_created
+        ON security_audit_events(event_type, created_at DESC);
+    `,
+  },
+  {
+    version: 6,
+    name: "ingestion_storage_and_jobs",
+    sql: `
+      CREATE TABLE IF NOT EXISTS stored_objects (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        source_id TEXT REFERENCES sources(id) ON DELETE SET NULL,
+        bucket TEXT NOT NULL,
+        object_key TEXT NOT NULL UNIQUE,
+        original_name TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+        sha256 CHAR(64) NOT NULL,
+        status TEXT NOT NULL DEFAULT 'uploaded'
+          CHECK (status IN ('uploaded', 'processing', 'ready', 'failed', 'quarantined')),
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_stored_object_project_hash
+        ON stored_objects(tenant_id, project_id, sha256);
+      CREATE INDEX IF NOT EXISTS idx_stored_objects_project_created
+        ON stored_objects(tenant_id, project_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS processing_jobs (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL REFERENCES stored_objects(id) ON DELETE CASCADE,
+        job_type TEXT NOT NULL CHECK (job_type IN ('ingest', 'extract', 'transcribe')),
+        idempotency_key CHAR(64) NOT NULL UNIQUE,
+        queue_job_id TEXT UNIQUE,
+        dispatch_version SMALLINT NOT NULL DEFAULT 1 CHECK (dispatch_version > 0),
+        status TEXT NOT NULL DEFAULT 'queued'
+          CHECK (status IN ('queued', 'active', 'retrying', 'completed', 'failed', 'dead_letter')),
+        progress SMALLINT NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+        attempts SMALLINT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        max_attempts SMALLINT NOT NULL DEFAULT 3 CHECK (max_attempts BETWEEN 1 AND 20),
+        error TEXT,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_processing_jobs_project_created
+        ON processing_jobs(tenant_id, project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_processing_jobs_status
+        ON processing_jobs(status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS job_dispatch_outbox (
+        job_id TEXT PRIMARY KEY REFERENCES processing_jobs(id) ON DELETE CASCADE,
+        payload JSONB NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        locked_until TIMESTAMPTZ,
+        locked_by TEXT,
+        last_error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_job_outbox_dispatch
+        ON job_dispatch_outbox(next_attempt_at, created_at);
+
+      ALTER TABLE stored_objects ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE stored_objects FORCE ROW LEVEL SECURITY;
+      ALTER TABLE processing_jobs ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE processing_jobs FORCE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS tenant_isolation ON stored_objects;
+      CREATE POLICY tenant_isolation ON stored_objects
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON processing_jobs;
+      CREATE POLICY tenant_isolation ON processing_jobs
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {

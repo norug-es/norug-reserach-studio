@@ -2,6 +2,7 @@ import { apiUser, authorized, badRequest, forbidden, serverError, unauthorized }
 import { applicationUrl, deliverIdentityEvent } from "@/lib/identity";
 import { createWorkspaceInvitation, listWorkspaceInvitations, listWorkspaceMembers } from "@/lib/workspaces";
 import type { WorkspaceRole } from "@/lib/types";
+import { mutationOriginError, recordSecurityEvent } from "@/lib/security";
 
 export async function GET() {
   const user = await apiUser();
@@ -15,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "workspace:manage")) return forbidden();
@@ -45,6 +48,11 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("No se pudo entregar la invitación", error);
     }
+    await recordSecurityEvent({
+      request, eventType: "workspace.invitation.created", outcome: delivered ? "success" : "failure",
+      userId: user.id, workspaceId: user.workspaceId,
+      metadata: { invitationId: invitation.id, role: invitation.role },
+    });
     return Response.json({
       invitation: {
         ...invitation,

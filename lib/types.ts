@@ -26,6 +26,35 @@ export type ResearchSource = {
   createdAt: string;
 };
 
+export type StoredObjectStatus = "uploaded" | "processing" | "ready" | "failed" | "quarantined";
+export type ProcessingJobStatus = "queued" | "active" | "retrying" | "completed" | "failed" | "dead_letter";
+
+export type StoredObject = {
+  id: string;
+  projectId: string;
+  sourceId: string | null;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  status: StoredObjectStatus;
+  createdAt: string;
+};
+
+export type ProcessingJob = {
+  id: string;
+  projectId: string;
+  objectId: string;
+  jobType: "ingest" | "extract" | "transcribe";
+  status: ProcessingJobStatus;
+  progress: number;
+  attempts: number;
+  maxAttempts: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Evidence = {
   id: string;
   projectId: string;
@@ -63,6 +92,8 @@ export type ProjectSnapshot = {
   evidence: Evidence[];
   approvals: Approval[];
   activity: Activity[];
+  objects: StoredObject[];
+  jobs: ProcessingJob[];
 };
 
 export type Workspace = {
@@ -97,4 +128,22 @@ export type SessionUser = {
   workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
+};
+
+export type UserSessionInfo = {
+  id: string;
+  userAgent: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  current: boolean;
+};
+
+export type SecurityAuditEvent = {
+  id: string;
+  eventType: string;
+  outcome: "success" | "failure" | "blocked";
+  userAgent: string;
+  createdAt: string;
 };

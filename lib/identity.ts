@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { query, withTransaction } from "@/lib/db";
-import { hashPassword, passwordPolicyError } from "@/lib/passwords";
+import { hashPassword, passwordPolicyError, verifyPassword } from "@/lib/passwords";
+import { revokeAllUserSessions } from "@/lib/sessions";
 
 export function applicationUrl(requestUrl: string) {
   const configured = process.env.APP_URL?.trim();
@@ -40,6 +41,29 @@ export async function consumePasswordReset(token: string, password: string) {
       WHERE id = $1 AND status = 'active'`, [reset.userId, hashPassword(password)]);
     await client.query(`UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP
       WHERE user_id = $1 AND used_at IS NULL`, [reset.userId]);
+    await revokeAllUserSessions(client, reset.userId, "password_reset");
+    return true;
+  });
+}
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string) {
+  const policyError = passwordPolicyError(newPassword);
+  if (policyError) throw new Error(policyError);
+  return withTransaction(async (client) => {
+    const result = await client.query<{ passwordHash: string; status: string }>(
+      `SELECT password_hash AS "passwordHash", status FROM users WHERE id = $1 FOR UPDATE`,
+      [userId],
+    );
+    const user = result.rows[0];
+    if (!user || user.status !== "active" || !verifyPassword(currentPassword, user.passwordHash)) {
+      throw new Error("La contraseña actual no es correcta");
+    }
+    if (verifyPassword(newPassword, user.passwordHash)) {
+      throw new Error("La nueva contraseña debe ser diferente");
+    }
+    await client.query(`UPDATE users SET password_hash = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1`, [userId, hashPassword(newPassword)]);
+    await revokeAllUserSessions(client, userId, "password_change");
     return true;
   });
 }

@@ -1,10 +1,13 @@
 import { apiUser, authorized, badRequest, forbidden, serverError, unauthorized } from "@/lib/api";
 import { removeWorkspaceMember, updateWorkspaceMemberRole } from "@/lib/workspaces";
 import type { WorkspaceRole } from "@/lib/types";
+import { mutationOriginError, recordSecurityEvent } from "@/lib/security";
 
 type Context = { params: Promise<{ userId: string }> };
 
 export async function PATCH(request: Request, { params }: Context) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "workspace:manage")) return forbidden();
@@ -17,19 +20,29 @@ export async function PATCH(request: Request, { params }: Context) {
     const member = await updateWorkspaceMemberRole({
       requesterId: user.id, workspaceId: user.workspaceId, memberId: userId, role: body.role,
     });
+    if (member) await recordSecurityEvent({
+      request, eventType: "workspace.member.role_changed", outcome: "success",
+      userId: user.id, workspaceId: user.workspaceId, metadata: { memberId: userId, role: body.role },
+    });
     return member ? Response.json({ member }) : Response.json({ error: "Miembro no modificable" }, { status: 404 });
   } catch (error) {
     return serverError(error);
   }
 }
 
-export async function DELETE(_request: Request, { params }: Context) {
+export async function DELETE(request: Request, { params }: Context) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "workspace:manage")) return forbidden();
   const { userId } = await params;
   const removed = await removeWorkspaceMember({
     requesterId: user.id, workspaceId: user.workspaceId, memberId: userId,
+  });
+  if (removed) await recordSecurityEvent({
+    request, eventType: "workspace.member.removed", outcome: "success",
+    userId: user.id, workspaceId: user.workspaceId, metadata: { memberId: userId },
   });
   return removed ? Response.json({ removed }) : Response.json({ error: "Miembro no eliminable" }, { status: 404 });
 }

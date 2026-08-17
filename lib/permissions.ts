@@ -4,6 +4,8 @@ export type Permission =
   | "project:create"
   | "project:update"
   | "source:create"
+  | "object:upload"
+  | "job:retry"
   | "evidence:create"
   | "approval:create"
   | "workspace:manage";
@@ -11,14 +13,15 @@ export type Permission =
 const grants: Record<WorkspaceRole, ReadonlySet<Permission>> = {
   owner: new Set([
     "project:create", "project:update", "source:create", "evidence:create",
-    "approval:create", "workspace:manage",
+    "object:upload", "job:retry", "approval:create", "workspace:manage",
   ]),
   admin: new Set([
     "project:create", "project:update", "source:create", "evidence:create",
-    "approval:create", "workspace:manage",
+    "object:upload", "job:retry", "approval:create", "workspace:manage",
   ]),
   editor: new Set([
     "project:create", "project:update", "source:create", "evidence:create",
+    "object:upload", "job:retry",
   ]),
   reviewer: new Set(["approval:create"]),
   viewer: new Set(),

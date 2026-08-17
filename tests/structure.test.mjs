@@ -72,10 +72,50 @@ test("completa identidad, recuperación y ciclo de invitaciones", () => {
   assert.match(text("lib/passwords.ts"), /scryptSync/);
   assert.match(text("lib/identity.ts"), /createHmac/);
   assert.match(text("lib/identity.ts"), /x-norug-signature/);
-  assert.match(text("lib/auth.ts"), /switchWorkspace\(session\.id, session\.workspaceId\)/);
-  assert.match(text("lib/auth.ts"), /import \{[^}]*switchWorkspace[^}]*\} from "@\/lib\/workspaces"/s);
+  assert.match(text("lib/auth.ts"), /resolvePersistentSession/);
+  assert.match(text("lib/sessions.ts"), /token_hash/);
   assert.match(text(".env.example"), /^IDENTITY_WEBHOOK_URL=/m);
   assert.match(text("scripts/check-env.ts"), /DATABASE_URL es diferente en \.env y \.env\.local/);
+});
+
+test("incluye endurecimiento de seguridad y operación", () => {
+  for (const path of [
+    "lib/security.ts", "lib/sessions.ts", "app/account/page.tsx",
+    "app/api/account/password/route.ts", "app/api/account/sessions/route.ts",
+    "scripts/check-production-env.ts", "scripts/backup-postgres.ps1",
+    "scripts/verify-backup.ps1", ".github/workflows/ci.yml",
+  ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  const migration = text("lib/migrations.ts");
+  for (const table of ["user_sessions", "security_rate_limits", "security_audit_events"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  for (const route of [
+    "app/api/auth/login/route.ts", "app/api/auth/password/forgot/route.ts",
+    "app/api/projects/route.ts", "app/api/workspaces/members/route.ts",
+  ]) assert.match(text(route), /mutationOriginError/);
+  assert.match(text("lib/identity.ts"), /revokeAllUserSessions/);
+  assert.match(text("next.config.ts"), /Strict-Transport-Security/);
+});
+
+test("implementa la base de ingesta S3, outbox y BullMQ", () => {
+  const pkg = JSON.parse(text("package.json"));
+  assert.equal(pkg.dependencies.bullmq, "6.1.2");
+  assert.equal(pkg.dependencies.ioredis, "6.0.0");
+  assert.equal(pkg.dependencies["@aws-sdk/client-s3"], "3.1112.0");
+  for (const path of [
+    "lib/ingestion.ts", "lib/storage.ts", "lib/queue.ts", "lib/upload-policy.ts",
+    "scripts/ingestion-worker.ts", "app/api/projects/[id]/uploads/route.ts",
+    "app/api/objects/[id]/download/route.ts", "app/api/jobs/[id]/retry/route.ts",
+  ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  const migration = text("lib/migrations.ts");
+  for (const table of ["stored_objects", "processing_jobs", "job_dispatch_outbox"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(text("lib/ingestion.ts"), /FOR UPDATE SKIP LOCKED/);
+  assert.match(text("lib/queue.ts"), /backoff: \{ type: "exponential"/);
+  assert.match(text("docker-compose.yml"), /redis:8\.2-alpine/);
+  assert.match(text("docker-compose.yml"), /minio\/minio:/);
+  assert.match(text("docker-compose.yml"), /ingestion-worker:/);
 });
 
 test("el checklist marca PostgreSQL como implementado", () => {

@@ -1,5 +1,6 @@
 import { apiUser, authorized, badRequest, forbidden, serverError, tenantContext, unauthorized } from "@/lib/api";
 import { createProject, listProjects } from "@/lib/repository";
+import { mutationOriginError } from "@/lib/security";
 
 export async function GET() {
   const user = await apiUser();
@@ -8,6 +9,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "project:create")) return forbidden();

@@ -1,6 +1,6 @@
 # Roadmap de producto — NoRug Research Studio
 
-Estado base: **v0.5.3 Identity & Teams Hotfix**  
+Estado base: **v0.6.0 Ingestion Foundation**  
 Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable que automatice la investigación, la verificación editorial y la producción de contenidos sin eliminar el control humano.
 
 ## Principios de ejecución
@@ -30,7 +30,8 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - **v0.5.1 Identity & Teams:** administración visual, cambio de roles, invitaciones de un solo uso, recuperación de contraseña y webhook de identidad firmado.
 - **v0.5.2 Hotfix:** type-check limitado al código activo, revalidación de workspace corregida y reparación idempotente del rol PostgreSQL sin privilegios.
 - **v0.5.3 Hotfix:** entorno PostgreSQL unificado entre Next.js, migraciones y pruebas; diagnóstico previo sin exposición de secretos y exclusiones coherentes de código histórico.
-- **Pendiente para declarar v0.5 estable:** OIDC con proveedor estable, prueba RLS en infraestructura de destino y procedimiento de backup/restauración validado.
+- **v0.5.4 Production Hardening:** sesiones opacas revocables, cambio de contraseña, rate limiting persistente, validación de origen, auditoría de seguridad, CI PostgreSQL y herramientas de backup/restauración.
+- **Pendiente para declarar v0.5 estable:** OIDC con proveedor estable, prueba RLS y restauración ejecutadas en infraestructura de destino, programación de backups y gestión externa de secretos.
 
 ### Alcance
 
@@ -51,14 +52,19 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - La migración conserva todos los datos de v0.4.1.
 - Existen pruebas positivas y negativas de aislamiento.
 - La recuperación de contraseña y el ciclo de invitaciones están cerrados en v0.5.1.
+- Las sesiones revocables y los controles de abuso quedan cerrados en v0.5.4.
 - La autenticación OIDC queda cerrada antes de declarar v0.5 estable. Auth.js v5 continúa como beta, por lo que no se incorpora todavía como dependencia central; la decisión se revisará junto con el proveedor OIDC.
 
 ## v0.6 — Ingesta y procesamiento
 
-- S3, R2 o MinIO para objetos binarios.
-- Redis y BullMQ, o worker equivalente, para tareas asíncronas.
-- Estados de trabajo, reintentos, idempotencia y dead-letter queue.
-- Carga de PDF, DOCX, TXT, audio y vídeo.
+- **v0.6.0 Ingestion Foundation:** MinIO/S3, Redis/BullMQ, worker independiente, outbox transaccional, RLS, deduplicación SHA-256, carga privada y descarga temporal.
+- [x] S3, R2 o MinIO para objetos binarios.
+- [x] Redis y BullMQ para tareas asíncronas.
+- [x] Estados de trabajo, reintentos, idempotencia y dead-letter queue.
+- [x] Carga de PDF, DOCX, TXT, audio y vídeo.
+- [x] Verificación de tamaño y SHA-256 desde el worker.
+- [ ] Inspección antimalware y cuarentena efectiva.
+- [ ] Extracción de texto de PDF, DOCX, TXT, Markdown y CSV.
 - Conectores YouTube, RSS/web y APIs personalizadas.
 - Selección y aprobación humana de fuentes.
 - Whisper con timestamps y uso opcional de CUDA.
@@ -103,11 +109,11 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 
 ## Orden inmediato de implementación
 
-1. Ejecutar la prueba negativa RLS contra la infraestructura PostgreSQL de destino.
-2. Definir el proveedor OIDC y su estrategia de vinculación de cuentas.
-3. Integrar OIDC sin romper las sesiones, membresías ni invitaciones existentes.
-4. Automatizar backups y documentar una restauración comprobada.
-5. Cerrar la v0.5 estable y comenzar almacenamiento de objetos de v0.6.
+1. Validar la migración 6 y el ciclo navegador → MinIO → outbox → BullMQ → worker.
+2. Implementar extracción documental y antimalware en v0.6.1.
+3. Incorporar Whisper y timestamps en v0.6.2.
+4. Añadir conectores YouTube/RSS/web con aprobación humana.
+5. Seleccionar OIDC y gestor externo de secretos antes del despliegue público.
 
 ## Condiciones que bloquean el avance
 

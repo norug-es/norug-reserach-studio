@@ -1,6 +1,7 @@
 import { apiUser, authorized, badRequest, forbidden, serverError, tenantContext, unauthorized } from "@/lib/api";
 import { getProjectSnapshot, updateProject } from "@/lib/repository";
 import type { ProjectStatus } from "@/lib/types";
+import { mutationOriginError } from "@/lib/security";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,8 @@ export async function GET(_request: Request, { params }: Context) {
 }
 
 export async function PATCH(request: Request, { params }: Context) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!authorized(user, "project:update")) return forbidden();

@@ -21,3 +21,14 @@ EXPOSE 3034
 ENV PORT=3034
 ENV HOSTNAME=0.0.0.0
 CMD ["node", "server.js"]
+
+FROM node:22-alpine AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY lib ./lib
+COPY scripts/ingestion-worker.ts ./scripts/ingestion-worker.ts
+RUN chown -R node:node /app
+USER node
+CMD ["node", "--experimental-strip-types", "scripts/ingestion-worker.ts"]

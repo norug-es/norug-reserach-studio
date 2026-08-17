@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: norug_research
+          POSTGRES_USER: norug
+          POSTGRES_PASSWORD: ci-admin-password
+          POSTGRES_APP_USER: norug_app
+          POSTGRES_APP_PASSWORD: ci-app-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U norug -d norug_research"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      POSTGRES_DB: norug_research
+      POSTGRES_USER: norug
+      POSTGRES_PASSWORD: ci-admin-password
+      POSTGRES_APP_USER: norug_app
+      POSTGRES_APP_PASSWORD: ci-app-password
+      DATABASE_URL: postgresql://norug_app:ci-app-password@localhost:5432/norug_research
+      DATABASE_SSL: "false"
+      AUTH_SECRET: ci-auth-secret-with-at-least-thirty-two-characters
+      AUTH_COOKIE_SECURE: "false"
+      APP_URL: http://localhost:3034
+      IDENTITY_WEBHOOK_SECRET: ci-webhook-secret-with-at-least-thirty-two-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Preparar rol de aplicación
+        env:
+          PGPASSWORD: ci-admin-password
+        run: sh docker/postgres/init-app-user.sh
+      - run: npm run db:migrate
+      - run: npm run test:db
+      - run: npm run test:structure
+      - run: npm run test:identity
+      - run: npm run test:security
+      - run: npm run test:ingestion
+      - run: npm run typecheck:worker
+      - run: npm run lint
+      - run: npm run build
