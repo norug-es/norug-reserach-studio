@@ -1,0 +1,486 @@
+
+> norug-research-studio@0.3.0 dev
+> next dev -p 3034
+
+▲ Next.js 16.3.1 (Turbopack)
+- Local:         http://localhost:3034
+- Network:       http://192.168.56.1:3034
+- Environments: .env.local
+✓ Ready in 953ms
+✓ Running next.config.ts took 68ms
+Creating turbopack project { dir: 'C:\\Dev\\NoRug.es\\norug-reserach-studio', testMode: true }
+
+ GET /login 200 in 860ms (next.js: 456ms, application-code: 404ms)
+ POST /api/auth/login 500 in 149ms (next.js: 110ms, application-code: 38ms)
+ GET /login 200 in 109ms (next.js: 16ms, application-code: 93ms)
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/api.ts:1:1
+Error: Module not found: Can't resolve '@/lib/auth'
+[31m[1m>[0m [90m1 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m
+  [90m3 |[0m [36mexport[0m [36masync[0m [36mfunction[0m apiUser() {
+  [90m4 |[0m   [36mreturn[0m getSession();
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+Import trace:
+  App Route:
+    ./lib/api.ts
+    ./app/api/auth/login/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/api.ts:1:1
+Error: Module not found: Can't resolve '@/lib/auth'
+[31m[1m>[0m [90m1 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m
+  [90m3 |[0m [36mexport[0m [36masync[0m [36mfunction[0m apiUser() {
+  [90m4 |[0m   [36mreturn[0m getSession();
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+Import trace:
+  App Route:
+    ./lib/api.ts
+    ./app/api/auth/login/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/api.ts:1:1
+Error: Module not found: Can't resolve '@/lib/auth'
+[31m[1m>[0m [90m1 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m
+  [90m3 |[0m [36mexport[0m [36masync[0m [36mfunction[0m apiUser() {
+  [90m4 |[0m   [36mreturn[0m getSession();
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+Import trace:
+  App Route:
+    ./lib/api.ts
+    ./app/api/auth/login/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/api.ts:1:1
+Error: Module not found: Can't resolve '@/lib/auth'
+[31m[1m>[0m [90m1 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m
+  [90m3 |[0m [36mexport[0m [36masync[0m [36mfunction[0m apiUser() {
+  [90m4 |[0m   [36mreturn[0m getSession();
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+Import trace:
+  App Route:
+    ./lib/api.ts
+    ./app/api/auth/login/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/login/page.tsx:2:1
+Error: Module not found: Can't resolve '@/lib/auth'
+  [90m1 |[0m [36mimport[0m { redirect } [36mfrom[0m [32m"next/navigation"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m [36mimport[0m { [33mLoginForm[0m } [36mfrom[0m [32m"@/components/login-form"[0m;
+  [90m4 |[0m
+  [90m5 |[0m [36mexport[0m [36mdefault[0m [36masync[0m [36mfunction[0m [33mLoginPage[0m() {
+
+Import map: aliased to relative './lib/auth' inside of [project]/
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./app/api/auth/login/route.ts:2:1
+Error: Export SESSION_COOKIE doesn't exist in target module
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+The export SESSION_COOKIE was not found in module [project]/lib/auth.ts [app-route] (ecmascript).
+Did you mean to import validateCredentials?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+
+./app/api/auth/login/route.ts:2:1
+Error: Export createSessionToken doesn't exist in target module
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+The export createSessionToken was not found in module [project]/lib/auth.ts [app-route] (ecmascript).
+Did you mean to import validateCredentials?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+
+./lib/api.ts:1:1
+Error: Export getSession doesn't exist in target module
+[31m[1m>[0m [90m1 |[0m [36mimport[0m { getSession } [36mfrom[0m [32m"@/lib/auth"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m2 |[0m
+  [90m3 |[0m [36mexport[0m [36masync[0m [36mfunction[0m apiUser() {
+  [90m4 |[0m   [36mreturn[0m getSession();
+
+The export getSession was not found in module [project]/lib/auth.ts [app-route] (ecmascript).
+Did you mean to import validateCredentials?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  App Route:
+    ./lib/api.ts
+    ./app/api/auth/login/route.ts
+
+
+
+./app/api/auth/login/route.ts:2:1
+Error: Export sessionCookieOptions doesn't exist in target module
+  [90m1 |[0m ...cookies } [36mfrom[0m [32m"next/headers"[0m;
+[31m[1m>[0m [90m2 |[0m ...createSessionToken, [33mSESSION_COOKIE[0m, sessionCookieOptions, validateCredentials } [36mfrom[0m [32m"@/...[0m
+  [90m  |[0m    [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m ...badRequest, serverError } [36mfrom[0m [32m"@/lib/api"[0m;
+  [90m4 |[0m ...
+  [90m5 |[0m ...[36mync[0m [36mfunction[0m [33mPOST[0m(request: [33mRequest[0m) {
+
+The export sessionCookieOptions was not found in module [project]/lib/auth.ts [app-route] (ecmascript).
+Did you mean to import validateCredentials?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+
+○ Compiling /_error ...
+ POST /api/auth/login 500 in 6.5s (next.js: 6.3s, application-code: 206ms)

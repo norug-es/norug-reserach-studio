@@ -1,0 +1,18 @@
+
+> norug-research-studio@0.3.0 dev
+> next dev -p 3034
+
+▲ Next.js 16.3.1 (Turbopack)
+- Local:         http://localhost:3034
+- Network:       http://192.168.56.1:3034
+- Environments: .env.local
+✓ Ready in 1355ms
+✓ Running next.config.ts took 61ms
+Creating turbopack project { dir: 'C:\\Dev\\NoRug.es\\norug-reserach-studio', testMode: true }
+
+ GET /login 200 in 734ms (next.js: 426ms, application-code: 307ms)
+(node:24708) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ GET / 307 in 170ms (next.js: 74ms, application-code: 96ms)
+ GET /login 200 in 124ms (next.js: 20ms, application-code: 104ms)
+ POST /api/auth/login 401 in 214ms (next.js: 140ms, application-code: 74ms)
