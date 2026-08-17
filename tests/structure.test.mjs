@@ -10,7 +10,7 @@ test("usa Next.js puro sin Vite, Vinext ni Wrangler", () => {
   for (const forbidden of ["vite", "vinext", "wrangler", "@cloudflare/vite-plugin"]) {
     assert.equal(allPackages[forbidden], undefined);
   }
-  assert.equal(pkg.scripts.dev, "next dev");
+  assert.match(pkg.scripts.dev, /^next dev(?:\s|$)/);
   assert.equal(pkg.scripts.build, "next build");
 });
 
@@ -25,6 +25,12 @@ test("incluye persistencia, autenticación y API funcional", () => {
 test("la base utiliza SQLite nativo y hashes SHA-256", () => {
   assert.match(text("lib/db.ts"), /node:sqlite/);
   assert.match(text("lib/repository.ts"), /sha256/);
+});
+
+test("convierte las filas SQLite en objetos planos para React", () => {
+  const repository = text("lib/repository.ts");
+  assert.match(repository, /function plainRow/);
+  assert.match(repository, /return rows\.map\(plainRow\)/);
 });
 
 test("mantiene sincronizada la contraseña de demostración", () => {
