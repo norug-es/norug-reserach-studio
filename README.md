@@ -85,4 +85,23 @@ tests/        controles estructurales
 
 La configuración genera `.next/standalone`. Para una instalación SaaS real deben reemplazarse las credenciales locales por un proveedor de identidad, mover SQLite a PostgreSQL cuando exista concurrencia multiinstancia y usar un gestor de secretos.
 
+### Proxy inverso y TLS
+
+En producción, publica la aplicación detrás de un proxy inverso (por ejemplo, Nginx, Caddy o Traefik) que termine TLS:
+
+1. Configura un dominio y un certificado TLS válido en el proxy.
+2. Haz que el proxy atienda `https://tu-dominio.example` y reenvíe las peticiones a `http://127.0.0.1:3034`.
+3. Reenvía, como mínimo, los encabezados `Host`, `X-Forwarded-For` y `X-Forwarded-Proto`.
+4. Mantén el puerto `3034` cerrado al exterior (o enlazado únicamente a `127.0.0.1`) y accede al servicio por el dominio HTTPS.
+
+Con `NODE_ENV=production`, `sessionCookieOptions.secure` es `true` de forma predeterminada. El navegador solo devuelve una cookie marcada como `Secure` mediante HTTPS; por ello, el acceso directo a `http://host:3034` puede mostrar el inicio de sesión como correcto, pero **no conservará la sesión** en las peticiones posteriores.
+
+Para una instalación local que deba funcionar explícitamente solo con HTTP, define:
+
+```dotenv
+AUTH_COOKIE_SECURE=false
+```
+
+`AUTH_COOKIE_SECURE` solo admite `true` o `false`; cualquier otro valor detiene la aplicación con un error de configuración. Omitirla mantiene el comportamiento seguro recomendado: `true` en producción y `false` durante el desarrollo. Desactivar esta protección permite que la cookie viaje sin cifrar, por lo que no debe usarse en una red no confiable ni en un despliegue público.
+
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

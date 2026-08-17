@@ -26,3 +26,18 @@ test("la base utiliza SQLite nativo y hashes SHA-256", () => {
   assert.match(text("lib/db.ts"), /node:sqlite/);
   assert.match(text("lib/repository.ts"), /sha256/);
 });
+
+test("mantiene sincronizada la contraseña de demostración", () => {
+  const sources = {
+    ".env.example": text(".env.example").match(/^ADMIN_PASSWORD=(.+)$/m)?.[1],
+    "README.md": text("README.md").match(/^Contraseña:\s*(.+)$/m)?.[1],
+    "docker-compose.yml": text("docker-compose.yml").match(/ADMIN_PASSWORD:\s*\$\{ADMIN_PASSWORD:-([^}]+)\}/)?.[1],
+    "components/login-form.tsx": text("components/login-form.tsx").match(/name="password"[^>]*defaultValue="([^"]+)"/)?.[1],
+  };
+
+  for (const [path, password] of Object.entries(sources)) {
+    assert.ok(password, `No se encontró la contraseña de demostración en ${path}`);
+  }
+  assert.equal(new Set(Object.values(sources)).size, 1, JSON.stringify(sources));
+  assert.match(text(".env.example"), /cambia esta contraseña antes de desplegar en producción/i);
+});
