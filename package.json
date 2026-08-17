@@ -1,6 +1,6 @@
 {
   "name": "norug-research-studio",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -9,12 +9,17 @@
     "dev": "next dev -p 3034",
     "build": "next build",
     "start": "next start -p 3034",
-    "db:migrate": "node --env-file-if-exists=.env --experimental-strip-types scripts/migrate.ts",
-    "db:import-sqlite": "node --env-file-if-exists=.env --experimental-strip-types scripts/import-sqlite.ts",
+    "db:env-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-env.ts",
+    "predb:migrate": "npm run db:env-check",
+    "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/migrate.ts",
+    "predb:import-sqlite": "npm run db:env-check",
+    "db:import-sqlite": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/import-sqlite.ts",
     "lint": "eslint .",
     "test:structure": "node --test tests/structure.test.mjs",
-    "test:db": "node --env-file-if-exists=.env --experimental-strip-types --test tests/postgres.integration.test.mjs",
-    "test": "npm run test:structure && npm run build",
+    "test:identity": "node --experimental-strip-types --test tests/identity.unit.test.mjs",
+    "pretest:db": "npm run db:env-check",
+    "test:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.mjs",
+    "test": "npm run test:structure && npm run test:identity && npm run build",
     "check": "npm run lint && npm run test"
   },
   "dependencies": {

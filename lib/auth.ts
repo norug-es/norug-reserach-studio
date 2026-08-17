@@ -1,8 +1,10 @@
-import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SessionUser } from "@/lib/types";
-import { findUserByEmail, resolveWorkspaceSession } from "@/lib/workspaces";
+import { verifyPassword } from "@/lib/passwords";
+import { findUserByEmail, resolveWorkspaceSession, switchWorkspace } from "@/lib/workspaces";
+import { query } from "@/lib/db";
 
 export const SESSION_COOKIE = "norug_research_session";
 const MAX_AGE_SECONDS = 60 * 60 * 12;
@@ -47,7 +49,11 @@ export function verifySessionToken(token?: string): SessionUser | null {
 
 export async function getSession() {
   const store = await cookies();
-  return verifySessionToken(store.get(SESSION_COOKIE)?.value);
+  const session = verifySessionToken(store.get(SESSION_COOKIE)?.value);
+  if (!session) return null;
+  // La cookie prueba la autenticidad de la sesión, pero la membresía y el rol
+  // se validan contra PostgreSQL en cada request para que una revocación sea inmediata.
+  return switchWorkspace(session.id, session.workspaceId);
 }
 
 export async function requireSession() {
@@ -60,15 +66,9 @@ export async function validateCredentials(email: string, password: string): Prom
   if (!email || typeof email !== "string" || !password || typeof password !== "string") return null;
   const user = await findUserByEmail(email);
   if (!user || user.status !== "active" || !verifyPassword(password, user.passwordHash)) return null;
-  return resolveWorkspaceSession(user);
-}
-
-function verifyPassword(password: string, encoded: string) {
-  const [algorithm, salt, hash] = encoded.split("$");
-  if (algorithm !== "scrypt" || !salt || !hash) return false;
-  const expected = Buffer.from(hash, "base64url");
-  const actual = scryptSync(password, salt, expected.length);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  const session = await resolveWorkspaceSession(user);
+  if (session) await query("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1", [user.id]);
+  return session;
 }
 
 function secureCookieEnabled() {

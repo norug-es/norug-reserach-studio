@@ -7,9 +7,18 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
   try {
     await database.ensureDatabase();
     const health = await database.databaseHealth();
-    assert.equal(health.migrationVersion, 3);
+    assert.equal(health.migrationVersion, 4);
     assert.ok(health.database);
     assert.equal(health.rlsEnforced, true, "DATABASE_URL no debe usar superusuario ni BYPASSRLS");
+    const identitySchema = await database.query(`SELECT
+      to_regclass('public.password_reset_tokens') IS NOT NULL AS "resetTable",
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'workspace_invitations'
+          AND column_name = 'accepted_at'
+      ) AS "invitationLifecycle"`);
+    assert.equal(identitySchema.rows[0].resetTable, true);
+    assert.equal(identitySchema.rows[0].invitationLifecycle, true);
 
     const tenantA = { tenantId: "workspace-norug-lab", userId: "user-admin" };
     const initial = await database.tenantQuery(

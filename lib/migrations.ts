@@ -266,6 +266,52 @@ const migrations: Migration[] = [
         WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
     `,
   },
+  {
+    version: 4,
+    name: "identity_and_team_lifecycle",
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+
+      ALTER TABLE workspace_invitations
+        ADD COLUMN IF NOT EXISTS accepted_by TEXT REFERENCES users(id);
+      ALTER TABLE workspace_invitations
+        ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
+      ALTER TABLE workspace_invitations
+        ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+
+      WITH ranked_pending AS (
+        SELECT id, ROW_NUMBER() OVER (
+          PARTITION BY workspace_id, LOWER(email)
+          ORDER BY created_at DESC, id DESC
+        ) AS position
+        FROM workspace_invitations
+        WHERE status = 'pending'
+      )
+      UPDATE workspace_invitations invitation
+      SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+      FROM ranked_pending ranked
+      WHERE invitation.id = ranked.id AND ranked.position > 1;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_workspace_invitation
+        ON workspace_invitations(workspace_id, LOWER(email))
+        WHERE status = 'pending';
+
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash CHAR(64) NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_password_reset_user
+        ON password_reset_tokens(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_password_reset_expiry
+        ON password_reset_tokens(expires_at) WHERE used_at IS NULL;
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {

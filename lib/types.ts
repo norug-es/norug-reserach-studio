@@ -81,6 +81,15 @@ export type WorkspaceMember = {
   createdAt: string;
 };
 
+export type WorkspaceInvitation = {
+  id: string;
+  email: string;
+  role: Exclude<WorkspaceRole, "owner">;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expiresAt: string;
+  createdAt: string;
+};
+
 export type SessionUser = {
   id: string;
   email: string;

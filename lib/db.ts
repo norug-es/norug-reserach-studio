@@ -7,9 +7,7 @@ export type TenantContext = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __norugResearchPool: Pool | undefined;
-  // eslint-disable-next-line no-var
   var __norugMigrationPromise: Promise<void> | undefined;
 }
 

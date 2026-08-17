@@ -27,7 +27,7 @@ export function badRequest(message: string) {
   return Response.json({ error: message }, { status: 400 });
 }
 
-export function serverError(error: unknown) {
+export function serverError(error: unknown, status = 500) {
   const message = error instanceof Error ? error.message : "Error interno";
-  return Response.json({ error: message }, { status: 500 });
+  return Response.json({ error: message }, { status });
 }

@@ -11,7 +11,10 @@
     "lib/repository.ts",
     "lib/types.ts",
     "lib/permissions.ts",
+    "lib/passwords.ts",
+    "lib/identity.ts",
     "lib/workspaces.ts",
+    "scripts/check-env.ts",
     "scripts/migrate.ts",
     "scripts/import-sqlite.ts"
   ]

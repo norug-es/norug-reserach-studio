@@ -161,9 +161,10 @@ export function ResearchStudio({ user, workspaces, projects: initialProjects, in
 
   return <div className="shell">
     <aside>
-      <div className="brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.5</small></b></div>
+      <div className="brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.5.3</small></b></div>
       <label className="workspace-switch">Workspace<select value={user.workspaceId} disabled={busy} onChange={(event) => switchWorkspace(event.target.value)}>{workspaces.map((workspace) => <option value={workspace.id} key={workspace.id}>{workspace.name} · {workspace.role}</option>)}</select></label>
       <nav>{["⌂  Centro de mando", `◇  Investigaciones  · ${projects.length}`, "⌁  Fuentes", "▱  Biblioteca", "—  PRODUCCIÓN", "◎  Guiones", "▷  Media Studio", "↗  Publicaciones", "—  SISTEMA", "⬡  Proveedores IA", "⚙  Configuración"].map((item, index) => <button className={index === 0 ? "active" : ""} key={item}>{item}</button>)}</nav>
+      {["owner", "admin"].includes(user.role) && <button className="team-link" onClick={() => { window.location.href = "/team"; }}>👥 Gestionar equipo</button>}
       <div className="plan"><em>MULTI-TENANT CORE</em><b>PostgreSQL RLS · {user.role}</b><i/><small>{user.workspaceName} · datos aislados</small><button onClick={() => setModal("workspace")}>＋ Workspace</button></div>
       <button className="user user-button" onClick={logout}><i>{user.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><b>{user.name}<small>{user.email} · {user.role} · Salir</small></b></button>
     </aside>

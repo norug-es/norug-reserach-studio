@@ -12,6 +12,10 @@ test("usa Next.js puro sin Vite, Vinext ni Wrangler", () => {
   }
   assert.match(pkg.scripts.dev, /^next dev(?:\s|$)/);
   assert.equal(pkg.scripts.build, "next build");
+  assert.match(pkg.scripts["test:db"], /\.env\.local/);
+  assert.equal(pkg.scripts["pretest:db"], "npm run db:env-check");
+  const tsconfig = JSON.parse(text("tsconfig.json"));
+  assert.ok(tsconfig.exclude.includes("data"), "data/ no debe entrar en el type-check de Next.js");
 });
 
 test("utiliza PostgreSQL y no conserva el runtime SQLite", () => {
@@ -51,6 +55,27 @@ test("implementa usuarios, workspaces, roles y RLS", () => {
   assert.doesNotMatch(text("lib/auth.ts"), /ADMIN_PASSWORD/);
   assert.match(text("docker/postgres/init-app-user.sh"), /NOBYPASSRLS/);
   assert.match(text("docker/postgres/init-app-user.sh"), /NOSUPERUSER/);
+  assert.match(text("docker/postgres/init-app-user.sh"), /ALTER TABLE %I\.%I OWNER TO %I/);
+});
+
+test("completa identidad, recuperación y ciclo de invitaciones", () => {
+  for (const path of [
+    "lib/passwords.ts", "lib/identity.ts", "app/team/page.tsx",
+    "app/forgot-password/page.tsx", "app/reset-password/page.tsx",
+    "app/invitations/accept/page.tsx", "app/api/auth/password/forgot/route.ts",
+    "app/api/auth/password/reset/route.ts", "app/api/invitations/accept/route.ts",
+    "app/api/workspaces/members/[userId]/route.ts",
+    "app/api/workspaces/invitations/[id]/route.ts",
+  ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  assert.match(text("lib/migrations.ts"), /password_reset_tokens/);
+  assert.match(text("lib/migrations.ts"), /uq_pending_workspace_invitation/);
+  assert.match(text("lib/passwords.ts"), /scryptSync/);
+  assert.match(text("lib/identity.ts"), /createHmac/);
+  assert.match(text("lib/identity.ts"), /x-norug-signature/);
+  assert.match(text("lib/auth.ts"), /switchWorkspace\(session\.id, session\.workspaceId\)/);
+  assert.match(text("lib/auth.ts"), /import \{[^}]*switchWorkspace[^}]*\} from "@\/lib\/workspaces"/s);
+  assert.match(text(".env.example"), /^IDENTITY_WEBHOOK_URL=/m);
+  assert.match(text("scripts/check-env.ts"), /DATABASE_URL es diferente en \.env y \.env\.local/);
 });
 
 test("el checklist marca PostgreSQL como implementado", () => {
@@ -59,5 +84,6 @@ test("el checklist marca PostgreSQL como implementado", () => {
 
 test("incluye el roadmap versionado", () => {
   assert.match(text("Docs/ROADMAP.md"), /v0\.5 — Base SaaS segura/);
+  assert.match(text("Docs/ROADMAP.md"), /v0\.5\.1 Identity & Teams/);
   assert.match(text("Docs/ROADMAP.md"), /v1\.0 — SaaS operable y comercial/);
 });

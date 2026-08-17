@@ -1,6 +1,6 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.5.0 Multi-tenant Foundation**  
+Versión revisada: **v0.5.3 Identity & Teams Hotfix**  
 Base analizada: `main@7bc16f10743ae3ecac3cad2b2c8e40e79ef075c0`  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
@@ -10,7 +10,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Definir libremente el área de investigación.
 - [x] Seleccionar idioma y formato de salida.
 - [x] Configurar controles de aprobación humana.
-- [-] Gestionar workspaces, equipos, usuarios, roles y permisos; núcleo y APIs implementados, falta completar invitaciones y administración visual.
+- [x] Gestionar workspaces, equipos, usuarios, roles y permisos mediante API y administración visual.
 - [x] Aislar proyectos, fuentes, evidencias, aprobaciones y actividad mediante `tenant_id` y PostgreSQL RLS.
 
 ## Captura de fuentes
@@ -94,6 +94,9 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Identidades persistentes en PostgreSQL con contraseña `scrypt`.
 - [x] Workspaces y cambio de tenant desde la sesión.
 - [x] Roles `owner`, `admin`, `editor`, `reviewer` y `viewer` aplicados en la API.
+- [x] Aceptación y revocación de invitaciones con token de un solo uso y caducidad.
+- [x] Recuperación de contraseña con token temporal y política de contraseña fuerte.
+- [x] Administración visual de miembros y cambio de roles, protegiendo al `owner`.
 - [x] Usuario PostgreSQL de aplicación sin `SUPERUSER` ni `BYPASSRLS` en Docker.
 - [x] Registro persistente de actividad.
 - [x] Exportación del manifiesto de evidencias.
@@ -101,7 +104,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [ ] Almacenamiento de archivos en S3/R2/MinIO.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
-- [ ] Webhooks e integración con n8n.
+- [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.
 - [ ] Logs estructurados, métricas y trazas distribuidas.
 - [ ] Backups automáticos y prueba documentada de restauración.
 
@@ -109,8 +112,8 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ### P0 — Base SaaS segura
 
-1. Completar aceptación/revocación de invitaciones y administración visual de miembros.
-2. Incorporar OIDC/Auth.js, recuperación y cambio de contraseña.
+1. Seleccionar e incorporar un proveedor OIDC estable; Auth.js v5 continúa como beta.
+2. Incorporar cambio de contraseña para sesiones autenticadas y cierre de todas las sesiones activas.
 3. Ejecutar las pruebas negativas RLS contra la infraestructura de destino.
 4. Backups automáticos, restauración probada y secretos externos.
 
@@ -144,4 +147,5 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] La sesión contiene usuario, workspace activo y rol.
 - [x] Las mutaciones aplican una matriz de permisos por rol.
 - [ ] Ejecutar `npm run test:db` contra la infraestructura PostgreSQL de destino antes del despliegue final.
-- [ ] Completar Auth.js/OIDC, recuperación de contraseña y ciclo de invitaciones antes de producción.
+- [x] Completar recuperación de contraseña y ciclo de invitaciones.
+- [ ] Completar OIDC, prueba RLS de destino y recuperación operativa antes de producción.
