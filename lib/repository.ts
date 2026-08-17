@@ -22,6 +22,13 @@ function projectFromRow(row: ProjectRow): ResearchProject {
   return { ...project, humanApproval: Boolean(human_approval), createdAt: created_at, updatedAt: updated_at };
 }
 
+// node:sqlite returns rows with a null prototype. React Server Components only
+// allow plain objects to cross the server/client boundary, so copy every row
+// before exposing repository results to pages or route handlers.
+function plainRow<T extends object>(row: T): T {
+  return { ...row };
+}
+
 export function listProjects(): ResearchProject[] {
   const rows = getDb().prepare(`SELECT id, name, area, language, output, status, progress,
     human_approval, created_at, updated_at FROM projects ORDER BY updated_at DESC`).all() as unknown as ProjectRow[];
@@ -62,8 +69,9 @@ export function updateProject(id: string, input: { status?: ProjectStatus; progr
 }
 
 export function listSources(projectId: string): ResearchSource[] {
-  return getDb().prepare(`SELECT id, project_id AS projectId, type, title, url, status, confidence,
+  const rows = getDb().prepare(`SELECT id, project_id AS projectId, type, title, url, status, confidence,
     created_at AS createdAt FROM sources WHERE project_id = ? ORDER BY created_at DESC`).all(projectId) as unknown as ResearchSource[];
+  return rows.map(plainRow);
 }
 
 export function createSource(projectId: string, input: { type: string; title: string; url?: string }, actor: string) {
@@ -71,16 +79,18 @@ export function createSource(projectId: string, input: { type: string; title: st
   getDb().prepare(`INSERT INTO sources (id, project_id, type, title, url, status, confidence)
     VALUES (?, ?, ?, ?, ?, 'queued', 50)`).run(id, projectId, input.type, input.title, input.url ?? "");
   logActivity(projectId, "source.added", `${input.type}: ${input.title}`, actor);
-  return getDb().prepare(`SELECT id, project_id AS projectId, type, title, url, status, confidence,
+  const row = getDb().prepare(`SELECT id, project_id AS projectId, type, title, url, status, confidence,
     created_at AS createdAt FROM sources WHERE id = ?`).get(id) as unknown as ResearchSource;
+  return plainRow(row);
 }
 
 export function listEvidence(projectId: string): Evidence[] {
-  return getDb().prepare(`SELECT e.id, e.project_id AS projectId, e.source_id AS sourceId,
+  const rows = getDb().prepare(`SELECT e.id, e.project_id AS projectId, e.source_id AS sourceId,
     COALESCE(s.title, 'Fuente eliminada') AS sourceTitle, e.claim, e.classification,
     e.confidence, e.sha256, e.created_at AS createdAt
     FROM evidence e LEFT JOIN sources s ON s.id = e.source_id
     WHERE e.project_id = ? ORDER BY e.created_at DESC`).all(projectId) as unknown as Evidence[];
+  return rows.map(plainRow);
 }
 
 export function createEvidence(projectId: string, input: {
@@ -112,18 +122,21 @@ export function createApproval(projectId: string, input: {
   getDb().prepare(`INSERT INTO approvals (id, project_id, stage, status, reviewer, note)
     VALUES (?, ?, ?, ?, ?, ?)`).run(id, projectId, input.stage, input.status, reviewer, input.note ?? "");
   logActivity(projectId, `approval.${input.status}`, `${input.stage}: ${input.note ?? "Sin observaciones"}`, reviewer);
-  return getDb().prepare(`SELECT id, project_id AS projectId, stage, status, reviewer, note,
+  const row = getDb().prepare(`SELECT id, project_id AS projectId, stage, status, reviewer, note,
     created_at AS createdAt FROM approvals WHERE id = ?`).get(id) as unknown as Approval;
+  return plainRow(row);
 }
 
 export function listApprovals(projectId: string): Approval[] {
-  return getDb().prepare(`SELECT id, project_id AS projectId, stage, status, reviewer, note,
+  const rows = getDb().prepare(`SELECT id, project_id AS projectId, stage, status, reviewer, note,
     created_at AS createdAt FROM approvals WHERE project_id = ? ORDER BY created_at DESC`).all(projectId) as unknown as Approval[];
+  return rows.map(plainRow);
 }
 
 export function listActivity(projectId: string): Activity[] {
-  return getDb().prepare(`SELECT id, project_id AS projectId, action, detail, actor,
+  const rows = getDb().prepare(`SELECT id, project_id AS projectId, action, detail, actor,
     created_at AS createdAt FROM activity WHERE project_id = ? ORDER BY created_at DESC LIMIT 100`).all(projectId) as unknown as Activity[];
+  return rows.map(plainRow);
 }
 
 function logActivity(projectId: string, action: string, detail: string, actor: string) {
