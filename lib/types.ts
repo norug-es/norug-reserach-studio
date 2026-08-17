@@ -1,5 +1,6 @@
 export type ProjectStatus = "draft" | "running" | "paused" | "review" | "completed";
 export type EvidenceClassification = "VERIFICADO" | "PROBABLE" | "HIPOTÉTICO" | "NO DEMOSTRADO";
+export type WorkspaceRole = "owner" | "admin" | "editor" | "reviewer" | "viewer";
 
 export type ResearchProject = {
   id: string;
@@ -64,4 +65,27 @@ export type ProjectSnapshot = {
   activity: Activity[];
 };
 
-export type SessionUser = { email: string; name: string };
+export type Workspace = {
+  id: string;
+  name: string;
+  slug: string;
+  role: WorkspaceRole;
+  createdAt: string;
+};
+
+export type WorkspaceMember = {
+  userId: string;
+  email: string;
+  name: string;
+  role: WorkspaceRole;
+  createdAt: string;
+};
+
+export type SessionUser = {
+  id: string;
+  email: string;
+  name: string;
+  workspaceId: string;
+  workspaceName: string;
+  role: WorkspaceRole;
+};

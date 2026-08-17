@@ -6,7 +6,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as { email?: string; password?: string };
     if (!body.email || !body.password) return badRequest("Email y contraseña son obligatorios");
-    const user = validateCredentials(body.email, body.password);
+    const user = await validateCredentials(body.email, body.password);
     if (!user) return Response.json({ error: "Credenciales incorrectas" }, { status: 401 });
     const store = await cookies();
     store.set(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions);

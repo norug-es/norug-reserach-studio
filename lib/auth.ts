@@ -1,7 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SessionUser } from "@/lib/types";
+import { findUserByEmail, resolveWorkspaceSession } from "@/lib/workspaces";
 
 export const SESSION_COOKIE = "norug_research_session";
 const MAX_AGE_SECONDS = 60 * 60 * 12;
@@ -29,8 +30,16 @@ export function verifySessionToken(token?: string): SessionUser | null {
   if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
   try {
     const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SessionUser & { exp: number };
-    if (!parsed.email || !parsed.name || parsed.exp < Date.now()) return null;
-    return { email: parsed.email, name: parsed.name };
+    if (!parsed.id || !parsed.email || !parsed.name || !parsed.workspaceId ||
+      !parsed.workspaceName || !parsed.role || parsed.exp < Date.now()) return null;
+    return {
+      id: parsed.id,
+      email: parsed.email,
+      name: parsed.name,
+      workspaceId: parsed.workspaceId,
+      workspaceName: parsed.workspaceName,
+      role: parsed.role,
+    };
   } catch {
     return null;
   }
@@ -47,12 +56,19 @@ export async function requireSession() {
   return user;
 }
 
-export function validateCredentials(email: string, password: string): SessionUser | null {
-  const allowedEmail = process.env.ADMIN_EMAIL ?? "admin@norug.es";
-  const allowedPassword = process.env.ADMIN_PASSWORD ?? "norug-demo";
+export async function validateCredentials(email: string, password: string): Promise<SessionUser | null> {
   if (!email || typeof email !== "string" || !password || typeof password !== "string") return null;
-  if (email.trim().toLowerCase() !== allowedEmail.toLowerCase() || password !== allowedPassword) return null;
-  return { email: allowedEmail, name: "Moisés Ramos" };
+  const user = await findUserByEmail(email);
+  if (!user || user.status !== "active" || !verifyPassword(password, user.passwordHash)) return null;
+  return resolveWorkspaceSession(user);
+}
+
+function verifyPassword(password: string, encoded: string) {
+  const [algorithm, salt, hash] = encoded.split("$");
+  if (algorithm !== "scrypt" || !salt || !hash) return false;
+  const expected = Buffer.from(hash, "base64url");
+  const actual = scryptSync(password, salt, expected.length);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function secureCookieEnabled() {
@@ -72,4 +88,3 @@ export const sessionCookieOptions = {
   path: "/",
   maxAge: MAX_AGE_SECONDS,
 };
-

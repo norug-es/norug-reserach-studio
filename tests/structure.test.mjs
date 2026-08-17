@@ -24,7 +24,7 @@ test("utiliza PostgreSQL y no conserva el runtime SQLite", () => {
   assert.match(text(".env.example"), /^DATABASE_URL=/m);
 });
 
-test("incluye migraciones, transacciones y API funcional", () => {
+test("incluye migraciones, transacciones multi-tenant y API funcional", () => {
   for (const path of [
     "lib/db.ts", "lib/migrations.ts", "lib/auth.ts", "lib/repository.ts",
     "app/api/health/route.ts", "app/api/live/route.ts", "app/api/projects/route.ts",
@@ -33,25 +33,31 @@ test("incluye migraciones, transacciones y API funcional", () => {
     "scripts/import-sqlite.ts",
   ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
   assert.match(text("lib/migrations.ts"), /pg_advisory_xact_lock/);
-  assert.match(text("lib/repository.ts"), /withTransaction/);
+  assert.match(text("lib/repository.ts"), /withTenantTransaction/);
   assert.match(text("lib/repository.ts"), /sha256/);
   assert.match(text("scripts/import-sqlite.ts"), /ON CONFLICT/);
 });
 
-test("mantiene sincronizada la contraseña de demostración", () => {
-  const sources = {
-    ".env.example": text(".env.example").match(/^ADMIN_PASSWORD=(.+)$/m)?.[1],
-    "README.md": text("README.md").match(/^Contraseña:\s*(.+)$/m)?.[1],
-    "docker-compose.yml": text("docker-compose.yml").match(/ADMIN_PASSWORD:\s*\$\{ADMIN_PASSWORD:-([^}]+)\}/)?.[1],
-    "components/login-form.tsx": text("components/login-form.tsx").match(/name="password"[^>]*defaultValue="([^"]+)"/)?.[1],
-  };
-  for (const [path, password] of Object.entries(sources)) {
-    assert.ok(password, `No se encontró la contraseña de demostración en ${path}`);
+test("implementa usuarios, workspaces, roles y RLS", () => {
+  const migration = text("lib/migrations.ts");
+  for (const table of ["users", "workspaces", "workspace_members", "workspace_invitations"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
-  assert.equal(new Set(Object.values(sources)).size, 1, JSON.stringify(sources));
-  assert.match(text(".env.example"), /cambie esta contraseña antes de desplegar/i);
+  assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(migration, /FORCE ROW LEVEL SECURITY/);
+  assert.match(migration, /current_setting\('app\.tenant_id'/);
+  assert.match(text("lib/permissions.ts"), /owner/);
+  assert.match(text("lib/permissions.ts"), /viewer/);
+  assert.doesNotMatch(text("lib/auth.ts"), /ADMIN_PASSWORD/);
+  assert.match(text("docker/postgres/init-app-user.sh"), /NOBYPASSRLS/);
+  assert.match(text("docker/postgres/init-app-user.sh"), /NOSUPERUSER/);
 });
 
 test("el checklist marca PostgreSQL como implementado", () => {
   assert.match(text("Docs/Topics-Check-list.md"), /\[x\] Persistencia en PostgreSQL/);
+});
+
+test("incluye el roadmap versionado", () => {
+  assert.match(text("Docs/ROADMAP.md"), /v0\.5 — Base SaaS segura/);
+  assert.match(text("Docs/ROADMAP.md"), /v1\.0 — SaaS operable y comercial/);
 });

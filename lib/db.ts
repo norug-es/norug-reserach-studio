@@ -1,6 +1,11 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { latestMigrationVersion, runMigrations } from "./migrations.ts";
 
+export type TenantContext = {
+  tenantId: string;
+  userId: string;
+};
+
 declare global {
   // eslint-disable-next-line no-var
   var __norugResearchPool: Pool | undefined;
@@ -71,13 +76,53 @@ export async function withTransaction<T>(work: (client: PoolClient) => Promise<T
   }
 }
 
+export async function withUserTransaction<T>(
+  userId: string,
+  work: (client: PoolClient) => Promise<T>,
+) {
+  return withTransaction(async (client) => {
+    await client.query("SELECT set_config('app.user_id', $1, TRUE)", [userId]);
+    return work(client);
+  });
+}
+
+export async function withTenantTransaction<T>(
+  context: TenantContext,
+  work: (client: PoolClient) => Promise<T>,
+) {
+  return withTransaction(async (client) => {
+    await client.query("SELECT set_config('app.user_id', $1, TRUE)", [context.userId]);
+    await client.query("SELECT set_config('app.tenant_id', $1, TRUE)", [context.tenantId]);
+    return work(client);
+  });
+}
+
+export async function tenantQuery<T extends QueryResultRow>(
+  context: TenantContext,
+  text: string,
+  values: unknown[] = [],
+) {
+  return withTenantTransaction(context, (client) => client.query<T>(text, values));
+}
+
 export async function databaseHealth() {
   const startedAt = performance.now();
-  const result = await query<{ database: string; version: string }>(
-    "SELECT current_database() AS database, current_setting('server_version') AS version",
+  const result = await query<{
+    database: string;
+    version: string;
+    user: string;
+    superuser: boolean;
+    bypassRls: boolean;
+  }>(
+    `SELECT current_database() AS database,
+      current_setting('server_version') AS version,
+      current_user AS "user", r.rolsuper AS superuser, r.rolbypassrls AS "bypassRls"
+      FROM pg_roles r WHERE r.rolname = current_user`,
   );
+  const row = result.rows[0];
   return {
-    ...result.rows[0],
+    ...row,
+    rlsEnforced: !row.superuser && !row.bypassRls,
     migrationVersion: latestMigrationVersion,
     latencyMs: Math.round(performance.now() - startedAt),
   };

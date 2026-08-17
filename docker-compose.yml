@@ -7,8 +7,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-norug_research}
       POSTGRES_USER: ${POSTGRES_USER:-norug}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-database-password}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-norug_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-change-this-app-password}
     volumes:
-      - postgres18-data:/var/lib/postgresql
+      - postgres-v05-data:/var/lib/postgresql
+      - ./docker/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -21,11 +24,9 @@ services:
     ports:
       - "3034:3034"
     environment:
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@norug.es}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-norug-demo}
       AUTH_SECRET: ${AUTH_SECRET:-replace-this-before-production}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-norug}:${POSTGRES_PASSWORD:-change-this-database-password}@postgres:5432/${POSTGRES_DB:-norug_research}
+      DATABASE_URL: postgresql://${POSTGRES_APP_USER:-norug_app}:${POSTGRES_APP_PASSWORD:-change-this-app-password}@postgres:5432/${POSTGRES_DB:-norug_research}
       DATABASE_SSL: "false"
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
     depends_on:
@@ -39,4 +40,4 @@ services:
       retries: 3
 
 volumes:
-  postgres18-data:
+  postgres-v05-data:

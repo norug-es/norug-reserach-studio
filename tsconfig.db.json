@@ -10,6 +10,8 @@
     "lib/migrations.ts",
     "lib/repository.ts",
     "lib/types.ts",
+    "lib/permissions.ts",
+    "lib/workspaces.ts",
     "scripts/migrate.ts",
     "scripts/import-sqlite.ts"
   ]

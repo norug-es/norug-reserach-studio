@@ -1,6 +1,6 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.4.1 PostgreSQL**  
+Versión revisada: **v0.5.0 Multi-tenant Foundation**  
 Base analizada: `main@7bc16f10743ae3ecac3cad2b2c8e40e79ef075c0`  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
@@ -10,8 +10,8 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Definir libremente el área de investigación.
 - [x] Seleccionar idioma y formato de salida.
 - [x] Configurar controles de aprobación humana.
-- [ ] Gestionar workspaces, equipos, usuarios, roles y permisos.
-- [ ] Aislar datos por tenant mediante autorización y PostgreSQL RLS.
+- [-] Gestionar workspaces, equipos, usuarios, roles y permisos; núcleo y APIs implementados, falta completar invitaciones y administración visual.
+- [x] Aislar proyectos, fuentes, evidencias, aprobaciones y actividad mediante `tenant_id` y PostgreSQL RLS.
 
 ## Captura de fuentes
 
@@ -91,6 +91,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Importador transaccional e idempotente desde SQLite v0.3.
 - [x] Transacciones atómicas en operaciones críticas.
 - [x] API REST protegida por sesión.
+- [x] Identidades persistentes en PostgreSQL con contraseña `scrypt`.
+- [x] Workspaces y cambio de tenant desde la sesión.
+- [x] Roles `owner`, `admin`, `editor`, `reviewer` y `viewer` aplicados en la API.
+- [x] Usuario PostgreSQL de aplicación sin `SUPERUSER` ni `BYPASSRLS` en Docker.
 - [x] Registro persistente de actividad.
 - [x] Exportación del manifiesto de evidencias.
 - [x] Liveness y readiness con diagnóstico PostgreSQL.
@@ -105,9 +109,9 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ### P0 — Base SaaS segura
 
-1. Workspaces, usuarios, roles y permisos.
-2. `tenant_id` en todas las entidades y políticas PostgreSQL RLS.
-3. Sustituir las credenciales locales por OIDC/Auth.js.
+1. Completar aceptación/revocación de invitaciones y administración visual de miembros.
+2. Incorporar OIDC/Auth.js, recuperación y cambio de contraseña.
+3. Ejecutar las pruebas negativas RLS contra la infraestructura de destino.
 4. Backups automáticos, restauración probada y secretos externos.
 
 ### P1 — Ingesta y procesamiento
@@ -124,7 +128,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 3. Informe técnico y guion con aprobación humana.
 4. Webhooks n8n, observabilidad y control de costes.
 
-## Criterio de salida de v0.4
+## Criterio de salida de v0.5 foundation
 
 - [x] El código ya no importa `node:sqlite`.
 - [x] `DATABASE_URL` es obligatorio.
@@ -134,4 +138,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Existe una ruta de migración para los datos SQLite existentes.
 - [x] El endpoint `/api/health` comprueba PostgreSQL.
 - [x] Existe prueba de integración ejecutable con `npm run test:db`.
+- [x] Todas las entidades de investigación incluyen `tenant_id` obligatorio.
+- [x] PostgreSQL RLS utiliza el contexto transaccional `app.tenant_id`.
+- [x] Docker crea un rol de aplicación `NOSUPERUSER NOBYPASSRLS`.
+- [x] La sesión contiene usuario, workspace activo y rol.
+- [x] Las mutaciones aplican una matriz de permisos por rol.
 - [ ] Ejecutar `npm run test:db` contra la infraestructura PostgreSQL de destino antes del despliegue final.
+- [ ] Completar Auth.js/OIDC, recuperación de contraseña y ciclo de invitaciones antes de producción.

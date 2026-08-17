@@ -101,6 +101,171 @@ const migrations: Migration[] = [
       ON CONFLICT (id) DO NOTHING;
     `,
   },
+  {
+    version: 3,
+    name: "multi_tenant_foundation",
+    sql: `
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active'
+          CHECK (status IN ('active', 'disabled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_lower ON users (LOWER(email));
+
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        created_by TEXT NOT NULL REFERENCES users(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_members (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL
+          CHECK (role IN ('owner', 'admin', 'editor', 'reviewer', 'viewer')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workspace_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_invitations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL
+          CHECK (role IN ('admin', 'editor', 'reviewer', 'viewer')),
+        token_hash CHAR(64) NOT NULL UNIQUE,
+        invited_by TEXT NOT NULL REFERENCES users(id),
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workspace_members_user
+        ON workspace_members(user_id, workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace
+        ON workspace_invitations(workspace_id, status, created_at DESC);
+
+      INSERT INTO users (id, email, name, password_hash)
+      VALUES (
+        'user-admin',
+        'admin@norug.es',
+        'Moisés Ramos',
+        'scrypt$norug-research-demo-v1$ZwZjL25jcOPee6piNVawJLdkOTvCN0Jc1qQc4i6TYiUnLgkhv9VcJnMyj50O_sXv81qHg_H4bsoM8f2OyH7NUA'
+      )
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO workspaces (id, name, slug, created_by)
+      VALUES ('workspace-norug-lab', 'NoRug Lab', 'norug-lab', 'user-admin')
+      ON CONFLICT (id) DO NOTHING;
+
+      INSERT INTO workspace_members (workspace_id, user_id, role)
+      VALUES ('workspace-norug-lab', 'user-admin', 'owner')
+      ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+      ALTER TABLE sources ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+      ALTER TABLE evidence ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+      ALTER TABLE approvals ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+      ALTER TABLE activity ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+
+      UPDATE projects SET tenant_id = 'workspace-norug-lab' WHERE tenant_id IS NULL;
+      UPDATE sources s SET tenant_id = p.tenant_id
+        FROM projects p WHERE s.project_id = p.id AND s.tenant_id IS NULL;
+      UPDATE evidence e SET tenant_id = p.tenant_id
+        FROM projects p WHERE e.project_id = p.id AND e.tenant_id IS NULL;
+      UPDATE approvals a SET tenant_id = p.tenant_id
+        FROM projects p WHERE a.project_id = p.id AND a.tenant_id IS NULL;
+      UPDATE activity a SET tenant_id = p.tenant_id
+        FROM projects p WHERE a.project_id = p.id AND a.tenant_id IS NULL;
+
+      ALTER TABLE projects ALTER COLUMN tenant_id SET NOT NULL;
+      ALTER TABLE sources ALTER COLUMN tenant_id SET NOT NULL;
+      ALTER TABLE evidence ALTER COLUMN tenant_id SET NOT NULL;
+      ALTER TABLE approvals ALTER COLUMN tenant_id SET NOT NULL;
+      ALTER TABLE activity ALTER COLUMN tenant_id SET NOT NULL;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_projects_tenant') THEN
+          ALTER TABLE projects ADD CONSTRAINT fk_projects_tenant
+            FOREIGN KEY (tenant_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_sources_tenant') THEN
+          ALTER TABLE sources ADD CONSTRAINT fk_sources_tenant
+            FOREIGN KEY (tenant_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_evidence_tenant') THEN
+          ALTER TABLE evidence ADD CONSTRAINT fk_evidence_tenant
+            FOREIGN KEY (tenant_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_approvals_tenant') THEN
+          ALTER TABLE approvals ADD CONSTRAINT fk_approvals_tenant
+            FOREIGN KEY (tenant_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_activity_tenant') THEN
+          ALTER TABLE activity ADD CONSTRAINT fk_activity_tenant
+            FOREIGN KEY (tenant_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+
+      CREATE INDEX IF NOT EXISTS idx_projects_tenant_updated
+        ON projects(tenant_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_sources_tenant_project
+        ON sources(tenant_id, project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_evidence_tenant_project
+        ON evidence(tenant_id, project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_approvals_tenant_project
+        ON approvals(tenant_id, project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_activity_tenant_project
+        ON activity(tenant_id, project_id, created_at DESC);
+
+      ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE projects FORCE ROW LEVEL SECURITY;
+      ALTER TABLE sources ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE sources FORCE ROW LEVEL SECURITY;
+      ALTER TABLE evidence ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE evidence FORCE ROW LEVEL SECURITY;
+      ALTER TABLE approvals ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE approvals FORCE ROW LEVEL SECURITY;
+      ALTER TABLE activity ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE activity FORCE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS tenant_isolation ON projects;
+      CREATE POLICY tenant_isolation ON projects
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON sources;
+      CREATE POLICY tenant_isolation ON sources
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON evidence;
+      CREATE POLICY tenant_isolation ON evidence
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON approvals;
+      CREATE POLICY tenant_isolation ON approvals
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON activity;
+      CREATE POLICY tenant_isolation ON activity
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {

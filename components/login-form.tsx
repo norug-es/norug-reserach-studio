@@ -39,14 +39,14 @@ export function LoginForm() {
   }
 
   return <form className="login-card" onSubmit={submit}>
-    <div className="brand login-brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.4</small></b></div>
+    <div className="brand login-brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.5</small></b></div>
     <em>ACCESO AL WORKSPACE</em>
     <h1>Investigación trazable, de la fuente a la publicación.</h1>
-    <p>Sesión local protegida mediante cookie firmada. Cambia las credenciales del archivo <code>.env.local</code>.</p>
+    <p>Identidad persistente, workspace activo y autorización por rol protegidos mediante sesión firmada.</p>
     <label>Email<input name="email" type="email" defaultValue="admin@norug.es" required autoComplete="username" /></label>
     <label>Contraseña<input name="password" type="password" defaultValue="norug-demo" required autoComplete="current-password" /></label>
     {error && <div className="form-error">{error}</div>}
     <button className="primary" disabled={busy}>{busy ? "Accediendo…" : "Entrar en Research Studio"}</button>
-    <small>Credenciales de demostración. No utilizar en producción.</small>
+    <small>Usuario inicial de desarrollo. OIDC/Auth.js se incorporará antes de declarar v0.5 estable.</small>
   </form>;
 }
