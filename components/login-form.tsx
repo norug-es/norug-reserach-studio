@@ -10,19 +10,32 @@ export function LoginForm() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const data = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
-    });
-    const payload = await response.json() as { error?: string };
-    if (!response.ok) {
-      setError(payload.error ?? "No fue posible iniciar sesión");
+    try {
+      const data = new FormData(event.currentTarget);
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+      });
+
+      let payload: { error?: string };
+      try {
+        payload = await response.json() as { error?: string };
+      } catch {
+        setError("El servidor devolvió una respuesta no válida. Inténtalo de nuevo más tarde.");
+        return;
+      }
+
+      if (!response.ok) {
+        setError(payload.error ?? "No fue posible iniciar sesión");
+        return;
+      }
+      window.location.href = "/";
+    } catch {
+      setError("No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.");
+    } finally {
       setBusy(false);
-      return;
     }
-    window.location.href = "/";
   }
 
   return <form className="login-card" onSubmit={submit}>
