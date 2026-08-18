@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, tenantQuery, withTenantTransaction, withTransaction, type TenantContext } from "./db.ts";
-import type { ProcessingJob, StoredObject } from "./types.ts";
+import type { ExtractedContent } from "./extraction.ts";
+import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject } from "./types.ts";
 import type { IngestionJobData } from "./queue.ts";
 
 const objectColumns = `id, project_id AS "projectId", source_id AS "sourceId",
@@ -30,6 +31,26 @@ export async function listProcessingJobs(context: TenantContext, projectId: stri
   return result.rows;
 }
 
+export async function listSecurityScans(context: TenantContext, projectId: string): Promise<SecurityScan[]> {
+  const result = await tenantQuery<SecurityScan>(context, `SELECT DISTINCT ON (object_id)
+    id, object_id AS "objectId", status, engine, engine_version AS "engineVersion",
+    threat_name AS "threatName", detected_mime AS "detectedMime",
+    detected_extension AS "detectedExtension", scanned_at::text AS "scannedAt"
+    FROM security_scans WHERE project_id = $1 ORDER BY object_id, scanned_at DESC`, [projectId]);
+  return result.rows;
+}
+
+export async function listExtractedDocuments(context: TenantContext, projectId: string): Promise<ExtractedDocumentSummary[]> {
+  const result = await tenantQuery<ExtractedDocumentSummary>(context, `SELECT d.id,
+    d.object_id AS "objectId", d.extractor, d.detected_mime AS "detectedMime",
+    d.text_sha256 AS "textSha256", d.character_count AS "characterCount",
+    d.word_count AS "wordCount", d.page_count AS "pageCount",
+    LEFT(d.text_content, 800) AS "textPreview", d.extracted_at::text AS "extractedAt",
+    (SELECT COUNT(*)::integer FROM document_chunks c WHERE c.document_id = d.id) AS "chunkCount"
+    FROM extracted_documents d WHERE d.project_id = $1 ORDER BY d.extracted_at DESC`, [projectId]);
+  return result.rows;
+}
+
 export async function findStoredObjectByHash(context: TenantContext, projectId: string, sha256: string) {
   const result = await tenantQuery<StoredObject>(context,
     `SELECT ${objectColumns} FROM stored_objects WHERE project_id = $1 AND sha256 = $2 LIMIT 1`,
@@ -53,10 +74,10 @@ export async function createIngestionRecord(context: TenantContext, input: {
   const sourceId = randomUUID();
   const jobId = randomUUID();
   const idempotencyKey = createHash("sha256")
-    .update(`${context.tenantId}:${input.projectId}:${input.sha256}:ingest`).digest("hex");
+    .update(`${context.tenantId}:${input.projectId}:${input.sha256}:scan`).digest("hex");
   const payload: IngestionJobData = {
     jobId, tenantId: context.tenantId, projectId: input.projectId,
-    objectId: input.objectId, userId: input.userId, jobType: "ingest", dispatchVersion: 1,
+    objectId: input.objectId, userId: input.userId, jobType: "scan", dispatchVersion: 1,
   };
   return withTenantTransaction(context, async (client) => {
     const project = await client.query("SELECT id FROM projects WHERE id = $1", [input.projectId]);
@@ -79,7 +100,7 @@ export async function createIngestionRecord(context: TenantContext, input: {
     const jobResult = await client.query<ProcessingJob>(`INSERT INTO processing_jobs
       (id, tenant_id, project_id, object_id, job_type, idempotency_key, queue_job_id,
        status, max_attempts, created_by)
-      VALUES ($1, $2, $3, $4, 'ingest', $5, $7, 'queued', 3, $6)
+      VALUES ($1, $2, $3, $4, 'scan', $5, $7, 'queued', 3, $6)
       RETURNING ${jobColumns}`, [jobId, context.tenantId, input.projectId, input.objectId,
       idempotencyKey, input.userId, `${jobId}-1`]);
     await client.query(`INSERT INTO job_dispatch_outbox (job_id, payload) VALUES ($1, $2::jsonb)`,
@@ -93,7 +114,7 @@ export async function createIngestionRecord(context: TenantContext, input: {
 export async function getStoredObjectForDownload(context: TenantContext, objectId: string) {
   const result = await tenantQuery<{ bucket: string; objectKey: string; originalName: string }>(context,
     `SELECT bucket, object_key AS "objectKey", original_name AS "originalName"
-     FROM stored_objects WHERE id = $1`, [objectId]);
+     FROM stored_objects WHERE id = $1 AND status = 'ready'`, [objectId]);
   return result.rows[0] ?? null;
 }
 
@@ -151,6 +172,122 @@ export async function markJobProgress(data: IngestionJobData, progress: number) 
     [data.jobId, Math.max(0, Math.min(99, Math.round(progress)))]);
 }
 
+export async function recordSecurityScan(data: IngestionJobData, input: {
+  engine: "clamav" | "file-signature";
+  status: "clean" | "infected" | "error";
+  threatName: string | null;
+  engineVersion: string | null;
+  detectedMime: string | null;
+  detectedExtension: string | null;
+  result: Record<string, unknown>;
+}) {
+  await withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, (client) =>
+    client.query(`INSERT INTO security_scans
+      (id, tenant_id, project_id, object_id, job_id, engine, engine_version, status,
+       threat_name, detected_mime, detected_extension, result)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`, [
+      randomUUID(), data.tenantId, data.projectId, data.objectId, data.jobId,
+      input.engine, input.engineVersion, input.status, input.threatName, input.detectedMime,
+      input.detectedExtension, JSON.stringify(input.result),
+    ]));
+}
+
+export async function markJobStageCompleted(data: IngestionJobData, result: Record<string, unknown>) {
+  await tenantQuery({ tenantId: data.tenantId, userId: data.userId },
+    `UPDATE processing_jobs SET status = 'completed', progress = 100, result = $2::jsonb,
+     error = NULL, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    [data.jobId, JSON.stringify(result)]);
+}
+
+export async function quarantineObject(data: IngestionJobData, result: Record<string, unknown>, threatName: string) {
+  await withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    const objectResult = await client.query<{ sourceId: string | null; originalName: string }>(
+      `UPDATE stored_objects SET status = 'quarantined', metadata = metadata || $2::jsonb,
+       updated_at = CURRENT_TIMESTAMP WHERE id = $1
+       RETURNING source_id AS "sourceId", original_name AS "originalName"`,
+      [data.objectId, JSON.stringify(result)]);
+    await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
+      result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, JSON.stringify(result)]);
+    const object = objectResult.rows[0];
+    if (object?.sourceId) await client.query("UPDATE sources SET status = 'quarantined' WHERE id = $1", [object.sourceId]);
+    await logActivity(client, data.tenantId, data.projectId, "object.quarantined",
+      `${object?.originalName ?? data.objectId}: ${threatName}`, "Worker de seguridad");
+  });
+}
+
+export async function enqueueExtraction(data: IngestionJobData, result: Record<string, unknown>) {
+  return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
+      result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, JSON.stringify(result)]);
+    const idempotencyKey = createHash("sha256")
+      .update(`${data.tenantId}:${data.projectId}:${data.objectId}:extract`).digest("hex");
+    const jobId = randomUUID();
+    const inserted = await client.query<{ id: string }>(`INSERT INTO processing_jobs
+      (id, tenant_id, project_id, object_id, job_type, idempotency_key, queue_job_id,
+       status, max_attempts, created_by)
+      VALUES ($1, $2, $3, $4, 'extract', $5, $6, 'queued', 3, $7)
+      ON CONFLICT (idempotency_key) DO NOTHING RETURNING id`, [
+      jobId, data.tenantId, data.projectId, data.objectId, idempotencyKey, `${jobId}-1`, data.userId,
+    ]);
+    if (!inserted.rows[0]) return null;
+    const payload: IngestionJobData = {
+      ...data, jobId, jobType: "extract", dispatchVersion: 1,
+    };
+    await client.query("INSERT INTO job_dispatch_outbox (job_id, payload) VALUES ($1, $2::jsonb)",
+      [jobId, JSON.stringify(payload)]);
+    return payload;
+  });
+}
+
+export async function saveExtractedDocument(data: IngestionJobData, input: ExtractedContent & { detectedMime: string }) {
+  return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    const objectResult = await client.query<{ sourceId: string | null; originalName: string }>(
+      `SELECT source_id AS "sourceId", original_name AS "originalName"
+       FROM stored_objects WHERE id = $1 FOR UPDATE`, [data.objectId]);
+    const object = objectResult.rows[0];
+    if (!object) throw new Error("Objeto no encontrado durante la extracción");
+    const documentId = randomUUID();
+    const document = await client.query<{ id: string }>(`INSERT INTO extracted_documents
+      (id, tenant_id, project_id, object_id, source_id, extractor, extractor_version,
+       detected_mime, text_content, text_sha256, character_count, word_count, page_count, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+      ON CONFLICT (object_id) DO UPDATE SET extractor = EXCLUDED.extractor,
+       extractor_version = EXCLUDED.extractor_version, detected_mime = EXCLUDED.detected_mime,
+       text_content = EXCLUDED.text_content, text_sha256 = EXCLUDED.text_sha256,
+       character_count = EXCLUDED.character_count, word_count = EXCLUDED.word_count,
+       page_count = EXCLUDED.page_count, metadata = EXCLUDED.metadata,
+       extracted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      RETURNING id`, [documentId, data.tenantId, data.projectId, data.objectId, object.sourceId,
+      input.extractor, input.extractorVersion, input.detectedMime, input.text, input.textSha256,
+      input.characterCount, input.wordCount, input.pageCount, JSON.stringify({ warnings: input.warnings })]);
+    const persistedDocumentId = document.rows[0].id;
+    await client.query("DELETE FROM document_chunks WHERE document_id = $1", [persistedDocumentId]);
+    for (const chunk of input.chunks) {
+      await client.query(`INSERT INTO document_chunks
+        (id, tenant_id, project_id, document_id, object_id, chunk_index, content,
+         content_sha256, character_count, token_estimate)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [randomUUID(), data.tenantId,
+        data.projectId, persistedDocumentId, data.objectId, chunk.index, chunk.content,
+        chunk.sha256, chunk.content.length, chunk.tokenEstimate]);
+    }
+    const result = { textSha256: input.textSha256, characterCount: input.characterCount,
+      wordCount: input.wordCount, pageCount: input.pageCount, chunks: input.chunks.length,
+      extractor: input.extractor, warnings: input.warnings };
+    await client.query(`UPDATE stored_objects SET status = 'ready', metadata = metadata || $2::jsonb,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.objectId, JSON.stringify({ extraction: result })]);
+    await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
+      result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, JSON.stringify(result)]);
+    if (object.sourceId) await client.query("UPDATE sources SET status = 'processed' WHERE id = $1", [object.sourceId]);
+    await logActivity(client, data.tenantId, data.projectId, "object.extracted",
+      `${object.originalName}: ${input.characterCount} caracteres · ${input.chunks.length} fragmentos`,
+      "Worker de extracción");
+    return result;
+  });
+}
+
 export async function markJobCompleted(data: IngestionJobData, result: Record<string, unknown>) {
   await withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
     const objectResult = await client.query<{ sourceId: string | null; originalName: string }>(
@@ -199,7 +336,7 @@ export async function retryProcessingJob(context: TenantContext, jobId: string, 
     await client.query("UPDATE stored_objects SET status = 'uploaded', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [job.objectId]);
     const payload: IngestionJobData = {
       jobId: job.jobId, tenantId: job.tenantId, projectId: job.projectId,
-      objectId: job.objectId, userId: job.userId, jobType: "ingest", dispatchVersion,
+      objectId: job.objectId, userId: job.userId, jobType: job.jobType as IngestionJobData["jobType"], dispatchVersion,
     };
     await client.query(`INSERT INTO job_dispatch_outbox (job_id, payload) VALUES ($1, $2::jsonb)
       ON CONFLICT (job_id) DO UPDATE SET payload = EXCLUDED.payload, attempts = 0,

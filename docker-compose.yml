@@ -22,6 +22,8 @@ services:
   redis:
     image: redis:8.2-alpine
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-v06-data:/data
     healthcheck:
@@ -29,6 +31,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.5.3-debian13-slim
+    ports:
+      - "127.0.0.1:${CLAMAV_PORT:-3310}:3310"
+    volumes:
+      - clamav-v061-data:/var/lib/clamav
     restart: unless-stopped
 
   minio:
@@ -95,6 +105,11 @@ services:
       DATABASE_POOL_MAX: ${WORKER_DATABASE_POOL_MAX:-5}
       REDIS_URL: redis://redis:6379
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      REDIS_CONNECT_TIMEOUT_MS: ${REDIS_CONNECT_TIMEOUT_MS:-10000}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      CLAMAV_TIMEOUT_MS: ${CLAMAV_TIMEOUT_MS:-120000}
+      EXTRACTED_TEXT_MAX_CHARS: ${EXTRACTED_TEXT_MAX_CHARS:-10000000}
       S3_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -108,6 +123,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
       minio:
         condition: service_healthy
     restart: unless-stopped
@@ -116,3 +133,4 @@ volumes:
   postgres-v05-data:
   redis-v06-data:
   minio-v06-data:
+  clamav-v061-data:

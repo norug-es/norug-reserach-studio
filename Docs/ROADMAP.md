@@ -1,6 +1,6 @@
 # Roadmap de producto — NoRug Research Studio
 
-Estado base: **v0.6.0 Ingestion Foundation**  
+Estado base: **v0.6.1 Secure Extraction**  
 Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable que automatice la investigación, la verificación editorial y la producción de contenidos sin eliminar el control humano.
 
 ## Principios de ejecución
@@ -58,13 +58,14 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 ## v0.6 — Ingesta y procesamiento
 
 - **v0.6.0 Ingestion Foundation:** MinIO/S3, Redis/BullMQ, worker independiente, outbox transaccional, RLS, deduplicación SHA-256, carga privada y descarga temporal.
+- **v0.6.1 Secure Extraction:** firma binaria, ClamAV, cuarentena, migración 7, extracción PDF/DOCX/texto y fragmentos trazables.
 - [x] S3, R2 o MinIO para objetos binarios.
 - [x] Redis y BullMQ para tareas asíncronas.
 - [x] Estados de trabajo, reintentos, idempotencia y dead-letter queue.
 - [x] Carga de PDF, DOCX, TXT, audio y vídeo.
 - [x] Verificación de tamaño y SHA-256 desde el worker.
-- [ ] Inspección antimalware y cuarentena efectiva.
-- [ ] Extracción de texto de PDF, DOCX, TXT, Markdown y CSV.
+- [x] Inspección antimalware y cuarentena efectiva.
+- [x] Extracción de texto de PDF, DOCX, TXT, Markdown y CSV.
 - Conectores YouTube, RSS/web y APIs personalizadas.
 - Selección y aprobación humana de fuentes.
 - Whisper con timestamps y uso opcional de CUDA.
@@ -109,9 +110,9 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 
 ## Orden inmediato de implementación
 
-1. Validar la migración 6 y el ciclo navegador → MinIO → outbox → BullMQ → worker.
-2. Implementar extracción documental y antimalware en v0.6.1.
-3. Incorporar Whisper y timestamps en v0.6.2.
+1. Validar la migración 7 y los casos limpio, firma falsa y EICAR en la infraestructura de destino.
+2. Incorporar Whisper y timestamps en v0.6.2.
+3. Añadir OCR aislado para PDF sin capa de texto.
 4. Añadir conectores YouTube/RSS/web con aprobación humana.
 5. Seleccionar OIDC y gestor externo de secretos antes del despliegue público.
 

@@ -45,7 +45,7 @@ export type ProcessingJob = {
   id: string;
   projectId: string;
   objectId: string;
-  jobType: "ingest" | "extract" | "transcribe";
+  jobType: "ingest" | "scan" | "extract" | "transcribe";
   status: ProcessingJobStatus;
   progress: number;
   attempts: number;
@@ -53,6 +53,32 @@ export type ProcessingJob = {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SecurityScan = {
+  id: string;
+  objectId: string;
+  status: "clean" | "infected" | "error";
+  engine: string;
+  engineVersion: string | null;
+  threatName: string | null;
+  detectedMime: string | null;
+  detectedExtension: string | null;
+  scannedAt: string;
+};
+
+export type ExtractedDocumentSummary = {
+  id: string;
+  objectId: string;
+  extractor: string;
+  detectedMime: string;
+  textSha256: string;
+  characterCount: number;
+  wordCount: number;
+  pageCount: number | null;
+  chunkCount: number;
+  textPreview: string;
+  extractedAt: string;
 };
 
 export type Evidence = {
@@ -94,6 +120,8 @@ export type ProjectSnapshot = {
   activity: Activity[];
   objects: StoredObject[];
   jobs: ProcessingJob[];
+  scans: SecurityScan[];
+  documents: ExtractedDocumentSummary[];
 };
 
 export type Workspace = {

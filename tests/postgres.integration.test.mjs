@@ -7,7 +7,7 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
   try {
     await database.ensureDatabase();
     const health = await database.databaseHealth();
-    assert.equal(health.migrationVersion, 6);
+    assert.equal(health.migrationVersion, 7);
     assert.ok(health.database);
     assert.equal(health.rlsEnforced, true, "DATABASE_URL no debe usar superusuario ni BYPASSRLS");
     const identitySchema = await database.query(`SELECT
@@ -23,9 +23,13 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
       to_regclass('public.stored_objects') IS NOT NULL AS "objectsTable",
       to_regclass('public.processing_jobs') IS NOT NULL AS "jobsTable",
       to_regclass('public.job_dispatch_outbox') IS NOT NULL AS "outboxTable",
+      to_regclass('public.security_scans') IS NOT NULL AS "scansTable",
+      to_regclass('public.extracted_documents') IS NOT NULL AS "documentsTable",
+      to_regclass('public.document_chunks') IS NOT NULL AS "chunksTable",
       (
         SELECT bool_and(relrowsecurity AND relforcerowsecurity)
-        FROM pg_class WHERE relname IN ('stored_objects', 'processing_jobs')
+        FROM pg_class WHERE relname IN ('stored_objects', 'processing_jobs',
+          'security_scans', 'extracted_documents', 'document_chunks')
       ) AS "ingestionRls"`);
     assert.equal(identitySchema.rows[0].resetTable, true);
     assert.equal(identitySchema.rows[0].invitationLifecycle, true);
@@ -35,6 +39,9 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
     assert.equal(identitySchema.rows[0].objectsTable, true);
     assert.equal(identitySchema.rows[0].jobsTable, true);
     assert.equal(identitySchema.rows[0].outboxTable, true);
+    assert.equal(identitySchema.rows[0].scansTable, true);
+    assert.equal(identitySchema.rows[0].documentsTable, true);
+    assert.equal(identitySchema.rows[0].chunksTable, true);
     assert.equal(identitySchema.rows[0].ingestionRls, true);
 
     const tenantA = { tenantId: "workspace-norug-lab", userId: "user-admin" };

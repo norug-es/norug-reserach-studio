@@ -11,7 +11,7 @@ import type {
   ResearchProject,
   ResearchSource,
 } from "@/lib/types";
-import { listProcessingJobs, listStoredObjects } from "@/lib/ingestion";
+import { listExtractedDocuments, listProcessingJobs, listSecurityScans, listStoredObjects } from "@/lib/ingestion";
 
 const projectColumns = `id, name, area, language, output, status, progress,
   human_approval AS "humanApproval", created_at::text AS "createdAt",
@@ -189,12 +189,13 @@ async function logActivity(
 export async function getProjectSnapshot(context: TenantContext, id: string): Promise<ProjectSnapshot | null> {
   const project = await getProject(context, id);
   if (!project) return null;
-  const [sources, evidence, approvals, activity, objects, jobs] = await Promise.all([
+  const [sources, evidence, approvals, activity, objects, jobs, scans, documents] = await Promise.all([
     listSources(context, id), listEvidence(context, id),
     listApprovals(context, id), listActivity(context, id),
     listStoredObjects(context, id), listProcessingJobs(context, id),
+    listSecurityScans(context, id), listExtractedDocuments(context, id),
   ]);
-  return { project, sources, evidence, approvals, activity, objects, jobs };
+  return { project, sources, evidence, approvals, activity, objects, jobs, scans, documents };
 }
 
 export async function evidenceManifest(context: TenantContext, projectId: string) {

@@ -118,6 +118,23 @@ test("implementa la base de ingesta S3, outbox y BullMQ", () => {
   assert.match(text("docker-compose.yml"), /ingestion-worker:/);
 });
 
+test("implementa escaneo, cuarentena y extracción segura", () => {
+  const pkg = JSON.parse(text("package.json"));
+  assert.equal(pkg.dependencies["file-type"], "22.0.2");
+  assert.equal(pkg.dependencies.mammoth, "1.12.1");
+  assert.equal(pkg.dependencies["pdf-parse"], "2.4.5");
+  for (const path of ["lib/clamav.ts", "lib/file-inspection.ts", "lib/extraction.ts"]) {
+    assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  }
+  const migration = text("lib/migrations.ts");
+  for (const table of ["security_scans", "extracted_documents", "document_chunks"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(text("docker-compose.yml"), /clamav\/clamav:1\.5\.3-debian13-slim/);
+  assert.match(text("scripts/ingestion-worker.ts"), /waitUntilReady/);
+  assert.match(text("scripts/ingestion-worker.ts"), /quarantineObject/);
+});
+
 test("el checklist marca PostgreSQL como implementado", () => {
   assert.match(text("Docs/Topics-Check-list.md"), /\[x\] Persistencia en PostgreSQL/);
 });

@@ -1,4 +1,4 @@
-# NoRug Research Studio v0.6.0
+# NoRug Research Studio v0.6.1
 
 MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Funciona con **Next.js puro y PostgreSQL**; no utiliza Vite, Vinext, Wrangler ni Cloudflare Workers.
 
@@ -23,7 +23,7 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - Registro de actividad y exportación del manifiesto de evidencias.
 - API REST protegida por sesión.
 - Endpoints separados de vida (`/api/live`) y disponibilidad (`/api/health`).
-- Docker Compose con aplicación, PostgreSQL y healthchecks.
+- Docker Compose con aplicación, PostgreSQL, Redis, MinIO, ClamAV, worker y healthchecks.
 - CI con PostgreSQL 18, prueba negativa RLS, lint, pruebas y build.
 - Backup PostgreSQL con checksum y restauración de prueba en una base aislada.
 - Almacenamiento privado S3-compatible: MinIO local y compatibilidad con S3/R2 en producción.
@@ -31,6 +31,10 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - Cola Redis/BullMQ con worker independiente, reintentos exponenciales y estado `dead_letter`.
 - Outbox PostgreSQL transaccional para no perder trabajos cuando Redis no está disponible.
 - Verificación del contenido almacenado por tamaño y hash antes de marcarlo como listo.
+- Inspección de firma binaria real y validación estricta de archivos de texto UTF-8.
+- Escaneo ClamAV previo al procesamiento, cuarentena persistente y descarga bloqueada.
+- Extracción de PDF, DOCX, TXT, Markdown y CSV con texto normalizado y hash independiente.
+- Fragmentación reproducible del texto para preparar búsqueda semántica y RAG.
 
 Los conectores externos, IA generativa, Whisper, FFmpeg, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
 
@@ -38,7 +42,7 @@ Los conectores externos, IA generativa, Whisper, FFmpeg, facturación y producci
 
 - Node.js 22.13 o superior.
 - npm 10 o superior.
-- Docker Desktop para levantar PostgreSQL, Redis, MinIO y el worker localmente.
+- Docker Desktop para levantar PostgreSQL, Redis, MinIO, ClamAV y el worker localmente.
 
 ## Inicio rápido con Docker
 
@@ -59,7 +63,7 @@ Levanta las dependencias y el worker:
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d postgres redis minio ingestion-worker
+docker compose up -d postgres redis minio clamav ingestion-worker
 npm install
 npm run db:migrate
 npm run dev
@@ -77,6 +81,26 @@ La contraseña se almacena mediante `scrypt` dentro de PostgreSQL. Antes de prod
 Al aplicar la migración 5, las cookies firmadas de versiones anteriores dejan de ser válidas: cada usuario debe iniciar sesión una vez para crear su sesión persistente revocable.
 
 La migración 6 añade `stored_objects`, `processing_jobs` y el outbox. Los dos primeros aplican RLS forzada. MinIO queda disponible en `http://localhost:9000` y su consola en `http://localhost:9001`.
+
+La migración 7 añade dictámenes antimalware, documentos extraídos y fragmentos con RLS forzada. Los objetos aceptados por v0.6.0 se devuelven automáticamente a la cola para recibir su primer escaneo ClamAV; mientras tanto no se consideran nuevamente listos.
+
+## Actualizar desde v0.6.0
+
+Conserva los volúmenes existentes y añade las variables nuevas de `.env.example` a tu `.env`. Después ejecuta:
+
+```powershell
+npm install
+docker compose up -d postgres redis minio clamav
+npm run db:migrate
+npm run test:db
+npm run test:clamav
+docker compose up -d --build ingestion-worker research-studio
+npm run ingestion:health-check
+npm test
+docker compose ps
+```
+
+El primer arranque de ClamAV puede tardar mientras prepara su base de firmas. No publiques el puerto 3310: el Compose solo lo enlaza a `127.0.0.1` para las pruebas del host y el worker utiliza la red privada de Docker.
 
 ## Reparación al actualizar desde v0.5.1–v0.5.2
 
@@ -141,6 +165,10 @@ Para Supabase, Neon, RDS u otro PostgreSQL gestionado, utiliza su `DATABASE_URL`
 | `UPLOAD_MAX_BYTES` | Límite por archivo; 52.428.800 bytes por defecto |
 | `REDIS_URL` | Redis de BullMQ; usa `rediss://` fuera de red privada/local |
 | `WORKER_CONCURRENCY` | Trabajos concurrentes por instancia del worker |
+| `REDIS_CONNECT_TIMEOUT_MS` | Tiempo máximo de conexión inicial a Redis |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | Daemon privado de análisis antimalware |
+| `CLAMAV_TIMEOUT_MS` | Tiempo máximo por escaneo |
+| `EXTRACTED_TEXT_MAX_CHARS` | Límite defensivo del texto extraído |
 
 ## Identidad e invitaciones
 
@@ -160,7 +188,7 @@ Antes de desplegar, valida las variables críticas:
 npm run env:production-check
 ```
 
-El comando exige HTTPS, cookie segura, secretos independientes de al menos 32 caracteres, rol PostgreSQL no administrativo, TLS para bases remotas y webhook de identidad configurado.
+El comando exige HTTPS, cookie segura, secretos independientes de al menos 32 caracteres, rol PostgreSQL no administrativo, TLS para bases remotas, webhook de identidad y parámetros válidos del servicio privado ClamAV.
 
 ## Backup y restauración comprobada
 
@@ -180,9 +208,10 @@ Este backup cubre PostgreSQL, no los objetos de S3/MinIO. En producción debes a
 Formatos iniciales: PDF, DOCX, TXT, Markdown, CSV, MP3, WAV, M4A, MP4, WEBM y MOV. El límite por defecto es 50 MB y se configura con `UPLOAD_MAX_BYTES`.
 
 ```powershell
-docker compose up -d postgres redis minio ingestion-worker
+docker compose up -d postgres redis minio clamav ingestion-worker
 npm run db:migrate
 npm run ingestion:health-check
+npm run test:clamav
 npm run dev
 ```
 
@@ -192,7 +221,9 @@ Para ejecutar el worker directamente fuera de Docker:
 npm run worker:dev
 ```
 
-La v0.6.0 verifica almacenamiento e integridad. Todavía no extrae texto, transcribe audio ni analiza malware; esas funciones pertenecen a v0.6.1 y posteriores.
+La v0.6.1 ejecuta `upload → firma → ClamAV → extracción → ready`. Un resultado infectado termina en `quarantined`, queda registrado y no obtiene URL de descarga. PDF, DOCX, TXT, Markdown y CSV producen texto y fragmentos. Los PDF basados únicamente en imágenes quedan señalados para OCR; audio y vídeo todavía esperan Whisper.
+
+ClamAV reduce riesgo, pero no demuestra que un archivo sea inocuo. La firma `clean` significa que el motor y las firmas instaladas no detectaron una amenaza conocida en ese momento.
 
 ## Validación
 
@@ -202,6 +233,7 @@ npm run test:structure
 npm run test:identity
 npm run test:security
 npm run test:ingestion
+npm run test:clamav
 npm run typecheck:worker
 npm run build
 npm run test:db
@@ -255,6 +287,9 @@ lib/security.ts      origen, rate limiting y auditoría de seguridad
 lib/storage.ts       cliente S3-compatible y URLs temporales
 lib/ingestion.ts     objetos, jobs, outbox e idempotencia
 lib/queue.ts         conexión BullMQ/Redis
+lib/clamav.ts        protocolo privado PING, VERSION e INSTREAM
+lib/file-inspection.ts firmas binarias y política UTF-8
+lib/extraction.ts    extracción, normalización y fragmentación
 scripts/migrate.ts   migración manual
 scripts/ingestion-worker.ts worker independiente
 scripts/*postgres*   backup y restauración aislada
@@ -265,6 +300,6 @@ tests/               checklist estructural e integración PostgreSQL
 
 La compilación genera `.next/standalone`. Publica el servicio detrás de Caddy, Nginx o Traefik con HTTPS y deja `AUTH_COOKIE_SECURE=true`. El número total de conexiones es `DATABASE_POOL_MAX × instancias`; ajústalo al límite del servidor o incorpora PgBouncer al escalar horizontalmente.
 
-`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.0 añade la base de ingesta sin cerrar todavía extracción, Whisper ni antimalware. Antes de producción todavía hay que seleccionar un proveedor OIDC estable, conectar un gestor externo de secretos, usar TLS en PostgreSQL/Redis/S3 y programar backups coordinados de base de datos y objetos.
+`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.1 añade extracción y antimalware, pero todavía no incluye OCR ni Whisper. Antes de producción todavía hay que seleccionar un proveedor OIDC estable, conectar un gestor externo de secretos, proteger los servicios internos, usar TLS hacia proveedores remotos y programar backups coordinados de base de datos y objetos.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

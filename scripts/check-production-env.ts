@@ -46,4 +46,23 @@ const redisUrl = new URL(required("REDIS_URL"));
 const redisLocal = ["localhost", "127.0.0.1", "redis"].includes(redisUrl.hostname);
 if (!redisLocal && redisUrl.protocol !== "rediss:") throw new Error("Redis remoto debe usar rediss://");
 
-console.log(`Entorno de producción válido para ${appUrl.hostname} y PostgreSQL ${databaseUrl.hostname}`);
+const clamavHost = required("CLAMAV_HOST");
+if (/^[a-z]+:\/\//i.test(clamavHost) || /\s/.test(clamavHost)) {
+  throw new Error("CLAMAV_HOST debe ser un hostname o una IP, sin protocolo");
+}
+
+const positiveInteger = (name: string, maximum = Number.MAX_SAFE_INTEGER) => {
+  const value = Number(required(name));
+  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    throw new Error(`${name} debe ser un entero entre 1 y ${maximum}`);
+  }
+  return value;
+};
+
+positiveInteger("CLAMAV_PORT", 65_535);
+positiveInteger("CLAMAV_TIMEOUT_MS");
+positiveInteger("EXTRACTED_TEXT_MAX_CHARS");
+
+console.log(
+  `Entorno de producción válido para ${appUrl.hostname}, PostgreSQL ${databaseUrl.hostname} y ClamAV ${clamavHost}`,
+);

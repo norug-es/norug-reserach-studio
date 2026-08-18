@@ -39,7 +39,7 @@ export function LoginForm() {
   }
 
   return <form className="login-card" onSubmit={submit}>
-    <div className="brand login-brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.6.0</small></b></div>
+    <div className="brand login-brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.6.1</small></b></div>
     <em>ACCESO AL WORKSPACE</em>
     <h1>Investigación trazable, de la fuente a la publicación.</h1>
     <p>Identidad persistente, workspace activo y autorización por rol protegidos mediante una sesión revocable.</p>

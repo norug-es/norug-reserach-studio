@@ -1,7 +1,7 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.6.0 Ingestion Foundation**  
-Base analizada: paquete local **v0.6.0**  
+Versión revisada: **v0.6.1 Secure Extraction**  
+Base analizada: paquete local **v0.6.1**  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ## Configuración
@@ -19,7 +19,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [ ] Monitorizar canales de YouTube.
 - [ ] Incorporar vídeos o directos de Twitch.
 - [ ] Recopilar noticias, páginas web y RSS.
-- [-] Importar PDF, DOCX, TXT, Markdown y CSV; almacenamiento listo, extracción pendiente.
+- [x] Importar y extraer PDF, DOCX, TXT, Markdown y CSV con hash del texto.
 - [ ] Conectar APIs y fuentes personalizadas.
 - [ ] Filtrar fuentes por fechas, temas y relevancia.
 - [ ] Permitir que el humano seleccione qué materiales procesar.
@@ -30,7 +30,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [ ] Transcribir automáticamente con Whisper.
 - [ ] Utilizar GPU/CUDA cuando esté disponible.
 - [ ] Generar marcas de tiempo precisas.
-- [ ] Normalizar el contenido obtenido.
+- [x] Normalizar y fragmentar el contenido documental obtenido.
 - [x] Ejecutar tareas concurrentes mediante worker independiente y BullMQ/Redis.
 - [x] Implementar outbox, reintentos exponenciales, idempotencia y estado `dead_letter`.
 
@@ -108,7 +108,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Liveness y readiness con diagnóstico PostgreSQL.
 - [x] Almacenamiento privado en S3/R2/MinIO con descarga temporal firmada.
 - [x] Deduplicación por SHA-256 y verificación de integridad desde el worker.
-- [ ] Análisis antimalware y cuarentena efectiva antes de procesar contenido.
+- [x] Análisis ClamAV, firma binaria, cuarentena y bloqueo de descarga antes de extraer contenido.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
 - [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.
@@ -127,10 +127,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ### P1 — Ingesta y procesamiento
 
-1. Extracción documental y análisis antimalware.
-2. Whisper con marcas de tiempo y uso opcional de CUDA.
+1. Whisper con marcas de tiempo y uso opcional de CUDA.
+2. OCR aislado para documentos sin capa textual.
 3. Conectores YouTube, RSS/web y aprobación de fuentes.
-4. Normalización, métricas y políticas de retención de objetos.
+4. Métricas y políticas de retención de objetos y cuarentena.
 
 ### P2 — Inteligencia editorial
 

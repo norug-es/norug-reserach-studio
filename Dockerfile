@@ -28,7 +28,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY lib ./lib
-COPY scripts/ingestion-worker.ts ./scripts/ingestion-worker.ts
+COPY scripts/ingestion-worker.ts scripts/check-ingestion.ts ./scripts/
 RUN chown -R node:node /app
 USER node
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
+  CMD ["node", "--experimental-strip-types", "scripts/check-ingestion.ts"]
 CMD ["node", "--experimental-strip-types", "scripts/ingestion-worker.ts"]

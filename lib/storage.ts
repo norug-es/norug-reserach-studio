@@ -96,14 +96,19 @@ export async function deleteStoredObject(bucket: string, key: string) {
   await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
-export async function verifyStoredObject(input: { bucket: string; key: string; sha256: string; sizeBytes: number }) {
+export async function readVerifiedStoredObject(input: { bucket: string; key: string; sha256: string; sizeBytes: number }) {
   const response = await s3().send(new GetObjectCommand({ Bucket: input.bucket, Key: input.key }));
   if (!response.Body) throw new Error("El objeto almacenado no contiene datos");
   const bytes = await response.Body.transformToByteArray();
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   if (bytes.byteLength !== input.sizeBytes) throw new Error("El tamaño almacenado no coincide con el registro");
   if (sha256 !== input.sha256) throw new Error("La verificación SHA-256 del objeto ha fallado");
-  return { sizeBytes: bytes.byteLength, sha256, etag: response.ETag ?? null };
+  return { bytes, sizeBytes: bytes.byteLength, sha256, etag: response.ETag ?? null };
+}
+
+export async function verifyStoredObject(input: { bucket: string; key: string; sha256: string; sizeBytes: number }) {
+  const verified = await readVerifiedStoredObject(input);
+  return { sizeBytes: verified.sizeBytes, sha256: verified.sha256, etag: verified.etag };
 }
 
 export async function signedDownloadUrl(bucket: string, key: string, fileName: string) {

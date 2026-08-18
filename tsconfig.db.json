@@ -20,11 +20,15 @@
     "lib/queue.ts",
     "lib/storage.ts",
     "lib/upload-policy.ts",
+    "lib/file-inspection.ts",
+    "lib/clamav.ts",
+    "lib/extraction.ts",
     "scripts/check-env.ts",
     "scripts/check-production-env.ts",
     "scripts/migrate.ts",
     "scripts/import-sqlite.ts",
     "scripts/ingestion-worker.ts",
-    "scripts/check-ingestion.ts"
+    "scripts/check-ingestion.ts",
+    "scripts/test-clamav.ts"
   ]
 }

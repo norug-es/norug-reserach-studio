@@ -1,6 +1,6 @@
 {
   "name": "norug-research-studio",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -12,6 +12,7 @@
     "worker:dev": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/ingestion-worker.ts",
     "typecheck:worker": "tsc -p tsconfig.db.json --noEmit",
     "ingestion:health-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-ingestion.ts",
+    "test:clamav": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/test-clamav.ts",
     "db:env-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-env.ts",
     "predb:migrate": "npm run db:env-check",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/migrate.ts",
@@ -34,8 +35,11 @@
     "@aws-sdk/client-s3": "3.1112.0",
     "@aws-sdk/s3-request-presigner": "3.1112.0",
     "bullmq": "6.1.2",
+    "file-type": "22.0.2",
     "ioredis": "6.0.0",
+    "mammoth": "1.12.1",
     "next": "^16.3.1",
+    "pdf-parse": "2.4.5",
     "pg": "8.23.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"

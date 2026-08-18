@@ -9,7 +9,7 @@ export type IngestionJobData = {
   projectId: string;
   objectId: string;
   userId: string;
-  jobType: "ingest";
+  jobType: "ingest" | "scan" | "extract";
   dispatchVersion: number;
 };
 
@@ -20,7 +20,16 @@ export function redisUrl() {
 }
 
 export function createRedisConnection() {
-  return new Redis(redisUrl(), { maxRetriesPerRequest: null, enableReadyCheck: true });
+  const connection = new Redis(redisUrl(), {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: true,
+    connectTimeout: Number(process.env.REDIS_CONNECT_TIMEOUT_MS ?? 10_000),
+  });
+  connection.on("error", (error) => {
+    const code = (error as NodeJS.ErrnoException).code ?? "ERROR";
+    console.error(`Redis ${code}: ${error.message}`);
+  });
+  return connection;
 }
 
 export function createIngestionQueue(connection = createRedisConnection()) {

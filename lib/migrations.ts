@@ -456,6 +456,151 @@ const migrations: Migration[] = [
         WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
     `,
   },
+  {
+    version: 7,
+    name: "secure_extraction_pipeline",
+    sql: `
+      ALTER TABLE processing_jobs DROP CONSTRAINT IF EXISTS processing_jobs_job_type_check;
+      ALTER TABLE processing_jobs ADD CONSTRAINT processing_jobs_job_type_check
+        CHECK (job_type IN ('ingest', 'scan', 'extract', 'transcribe'));
+
+      CREATE TABLE IF NOT EXISTS security_scans (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL REFERENCES stored_objects(id) ON DELETE CASCADE,
+        job_id TEXT REFERENCES processing_jobs(id) ON DELETE SET NULL,
+        engine TEXT NOT NULL,
+        engine_version TEXT,
+        signature_version TEXT,
+        status TEXT NOT NULL CHECK (status IN ('clean', 'infected', 'error')),
+        threat_name TEXT,
+        detected_mime TEXT,
+        detected_extension TEXT,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        scanned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_security_scans_object
+        ON security_scans(tenant_id, object_id, scanned_at DESC);
+
+      CREATE TABLE IF NOT EXISTS extracted_documents (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL UNIQUE REFERENCES stored_objects(id) ON DELETE CASCADE,
+        source_id TEXT REFERENCES sources(id) ON DELETE SET NULL,
+        extractor TEXT NOT NULL,
+        extractor_version TEXT NOT NULL,
+        detected_mime TEXT NOT NULL,
+        text_content TEXT NOT NULL,
+        text_sha256 CHAR(64) NOT NULL,
+        character_count INTEGER NOT NULL CHECK (character_count >= 0),
+        word_count INTEGER NOT NULL CHECK (word_count >= 0),
+        page_count INTEGER,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        extracted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_extracted_documents_project
+        ON extracted_documents(tenant_id, project_id, extracted_at DESC);
+
+      CREATE TABLE IF NOT EXISTS document_chunks (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        document_id TEXT NOT NULL REFERENCES extracted_documents(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL REFERENCES stored_objects(id) ON DELETE CASCADE,
+        chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+        content TEXT NOT NULL,
+        content_sha256 CHAR(64) NOT NULL,
+        character_count INTEGER NOT NULL CHECK (character_count > 0),
+        token_estimate INTEGER NOT NULL CHECK (token_estimate > 0),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (document_id, chunk_index)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_document_chunks_project
+        ON document_chunks(tenant_id, project_id, document_id, chunk_index);
+
+      ALTER TABLE security_scans ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE security_scans FORCE ROW LEVEL SECURITY;
+      ALTER TABLE extracted_documents ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE extracted_documents FORCE ROW LEVEL SECURITY;
+      ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE document_chunks FORCE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS tenant_isolation ON security_scans;
+      CREATE POLICY tenant_isolation ON security_scans
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON extracted_documents;
+      CREATE POLICY tenant_isolation ON extracted_documents
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON document_chunks;
+      CREATE POLICY tenant_isolation ON document_chunks
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      -- Los objetos aceptados por v0.6.0 conservan su hash, pero todavía no tienen
+      -- dictamen antimalware. Se vuelven a poner en cola de forma idempotente.
+      DO $backfill$
+      DECLARE
+        tenant_record RECORD;
+        object_record RECORD;
+        scan_job_id TEXT;
+        scan_key CHAR(64);
+      BEGIN
+        FOR tenant_record IN SELECT id FROM workspaces
+        LOOP
+          PERFORM set_config('app.tenant_id', tenant_record.id, TRUE);
+          FOR object_record IN
+            SELECT id, tenant_id, project_id, created_by
+            FROM stored_objects object
+            WHERE tenant_id = tenant_record.id AND status = 'ready' AND created_by IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM processing_jobs job
+                WHERE job.object_id = object.id AND job.job_type = 'scan'
+              )
+          LOOP
+            PERFORM set_config('app.user_id', object_record.created_by, TRUE);
+            scan_job_id := 'scan-v7-' || md5(object_record.id);
+            scan_key := md5(object_record.tenant_id || ':' || object_record.id || ':scan') ||
+              md5(object_record.project_id || ':' || object_record.id || ':v7');
+            INSERT INTO processing_jobs
+              (id, tenant_id, project_id, object_id, job_type, idempotency_key,
+               queue_job_id, status, max_attempts, created_by)
+            VALUES (scan_job_id, object_record.tenant_id, object_record.project_id,
+              object_record.id, 'scan', scan_key, scan_job_id || '-1', 'queued', 3,
+              object_record.created_by)
+            ON CONFLICT DO NOTHING;
+            INSERT INTO job_dispatch_outbox (job_id, payload)
+            VALUES (scan_job_id, jsonb_build_object(
+              'jobId', scan_job_id,
+              'tenantId', object_record.tenant_id,
+              'projectId', object_record.project_id,
+              'objectId', object_record.id,
+              'userId', object_record.created_by,
+              'jobType', 'scan',
+              'dispatchVersion', 1
+            )) ON CONFLICT (job_id) DO NOTHING;
+            UPDATE stored_objects SET status = 'uploaded', updated_at = CURRENT_TIMESTAMP
+              WHERE id = object_record.id;
+            UPDATE sources SET status = 'queued'
+              WHERE id = (SELECT source_id FROM stored_objects WHERE id = object_record.id);
+          END LOOP;
+        END LOOP;
+        PERFORM set_config('app.tenant_id', '', TRUE);
+        PERFORM set_config('app.user_id', '', TRUE);
+      END $backfill$;
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {
