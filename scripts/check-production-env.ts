@@ -63,6 +63,22 @@ positiveInteger("CLAMAV_PORT", 65_535);
 positiveInteger("CLAMAV_TIMEOUT_MS");
 positiveInteger("EXTRACTED_TEXT_MAX_CHARS");
 
+const transcriberUrl = new URL(required("TRANSCRIBER_URL"));
+const transcriberLocal = ["localhost", "127.0.0.1", "transcriber"].includes(transcriberUrl.hostname);
+if (!transcriberLocal && transcriberUrl.protocol !== "https:") {
+  throw new Error("TRANSCRIBER_URL remoto debe usar HTTPS");
+}
+const transcriberSecret = required("TRANSCRIBER_API_KEY");
+if (transcriberSecret.length < 32 || /replace|change|development/i.test(transcriberSecret)) {
+  throw new Error("TRANSCRIBER_API_KEY debe ser aleatoria e independiente");
+}
+positiveInteger("TRANSCRIBER_TIMEOUT_MS");
+positiveInteger("TRANSCRIBER_MAX_BYTES");
+required("WHISPER_MODEL");
+required("WHISPER_DEVICE");
+required("WHISPER_COMPUTE_TYPE");
+
 console.log(
-  `Entorno de producción válido para ${appUrl.hostname}, PostgreSQL ${databaseUrl.hostname} y ClamAV ${clamavHost}`,
+  `Entorno de producción válido para ${appUrl.hostname}, PostgreSQL ${databaseUrl.hostname}, ` +
+  `ClamAV ${clamavHost} y Whisper ${transcriberUrl.hostname}`,
 );

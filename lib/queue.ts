@@ -9,7 +9,7 @@ export type IngestionJobData = {
   projectId: string;
   objectId: string;
   userId: string;
-  jobType: "ingest" | "scan" | "extract";
+  jobType: "ingest" | "scan" | "extract" | "transcribe";
   dispatchVersion: number;
 };
 

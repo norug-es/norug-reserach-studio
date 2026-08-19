@@ -4,6 +4,7 @@ import {
   acknowledgeOutbox,
   claimOutboxBatch,
   enqueueExtraction,
+  enqueueTranscription,
   getWorkerObject,
   markJobActive,
   markJobCompleted,
@@ -11,8 +12,10 @@ import {
   markJobProgress,
   quarantineObject,
   recordSecurityScan,
+  reconcilePendingPipeline,
   rejectOutbox,
   saveExtractedDocument,
+  saveTranscription,
 } from "../lib/ingestion.ts";
 import { createIngestionQueue, createRedisConnection, INGESTION_QUEUE, type IngestionJobData } from "../lib/queue.ts";
 import { readVerifiedStoredObject } from "../lib/storage.ts";
@@ -20,6 +23,7 @@ import { closeDb, ensureDatabase } from "../lib/db.ts";
 import { clamavHealth, scanWithClamav } from "../lib/clamav.ts";
 import { inspectFileSignature, isExtractableDocument } from "../lib/file-inspection.ts";
 import { extractDocument } from "../lib/extraction.ts";
+import { transcribeMedia, transcriberHealth } from "../lib/transcriber.ts";
 
 const workerId = `worker-${randomUUID()}`;
 const queueConnection = createRedisConnection();
@@ -48,6 +52,17 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
     await job.updateProgress(85);
     await markJobProgress(data, 85);
     return saveExtractedDocument(data, { ...extracted, detectedMime: object.contentType });
+  }
+
+  if (data.jobType === "transcribe") {
+    await job.updateProgress(40);
+    await markJobProgress(data, 40);
+    const transcription = await transcribeMedia(
+      verification.bytes, object.originalName, object.contentType,
+    );
+    await job.updateProgress(90);
+    await markJobProgress(data, 90);
+    return saveTranscription(data, transcription);
   }
 
   let signature: Awaited<ReturnType<typeof inspectFileSignature>>;
@@ -102,6 +117,10 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
     await enqueueExtraction(data, result);
     return { ...result, nextStage: "extract" };
   }
+  if (signature.detectedMime.startsWith("audio/") || signature.detectedMime.startsWith("video/")) {
+    await enqueueTranscription(data, result);
+    return { ...result, nextStage: "transcribe" };
+  }
   await markJobCompleted(data, result);
   return result;
 }, {
@@ -112,11 +131,14 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
 
 worker.on("failed", (job, error) => {
   if (!job) return;
+  console.error(`Trabajo fallido: ${job.name} · ${job.id} · ${error.message}`);
   const maxAttempts = Number(job.opts.attempts ?? 1);
   const final = job.attemptsMade >= maxAttempts;
   void markJobFailed(job.data, error, job.attemptsMade, final).catch((dbError) =>
     console.error("No se pudo registrar el fallo del trabajo", dbError));
 });
+worker.on("active", (job) => console.log(`Trabajo activo: ${job.name} · ${job.id}`));
+worker.on("completed", (job) => console.log(`Trabajo completado: ${job.name} · ${job.id}`));
 worker.on("error", (error) => console.error(`Worker BullMQ ${error.message}`));
 
 async function dispatchOutbox() {
@@ -141,10 +163,11 @@ async function dispatchOutbox() {
   }
 }
 
-await Promise.all([queue.waitUntilReady(), worker.waitUntilReady(), clamavHealth()]);
+await Promise.all([queue.waitUntilReady(), worker.waitUntilReady(), clamavHealth(), transcriberHealth()]);
+const reconciled = await reconcilePendingPipeline();
 await dispatchOutbox();
 const dispatcher = setInterval(() => void dispatchOutbox(), 2_000);
-console.log(`Worker de ingesta listo: ${workerId}`);
+console.log(`Worker de ingesta listo: ${workerId} · reconciliado ${JSON.stringify(reconciled)}`);
 
 async function shutdown(signal: string) {
   console.log(`Cerrando worker por ${signal}`);

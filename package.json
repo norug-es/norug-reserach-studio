@@ -1,6 +1,6 @@
 {
   "name": "norug-research-studio",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -13,6 +13,7 @@
     "typecheck:worker": "tsc -p tsconfig.db.json --noEmit",
     "ingestion:health-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-ingestion.ts",
     "test:clamav": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/test-clamav.ts",
+    "test:transcriber": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/test-transcriber.ts",
     "db:env-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-env.ts",
     "predb:migrate": "npm run db:env-check",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/migrate.ts",

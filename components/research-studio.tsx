@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import type { ExtractedDocumentSummary, ProcessingJob, ProjectSnapshot, ResearchProject, SecurityScan, SessionUser, StoredObject, Workspace } from "@/lib/types";
+import { FormEvent, useEffect, useState } from "react";
+import type { ExtractedDocumentSummary, ProcessingJob, ProjectSnapshot, ResearchProject, SecurityScan, SessionUser, StoredObject, TranscriptionSummary, Workspace } from "@/lib/types";
 
 const phases = [
   ["01", "Descubrimiento", "Monitoriza, filtra y selecciona", 0, 14],
@@ -43,6 +43,25 @@ export function ResearchStudio({ user, workspaces, projects: initialProjects, in
     const data = await api<ProjectSnapshot>(`/api/projects/${projectId}`);
     setSnapshot(data);
   }
+
+  const activeJobsKey = snapshot?.jobs
+    .filter((job) => ["queued", "active", "retrying"].includes(job.status))
+    .map((job) => `${job.id}:${job.status}:${job.progress}`).join("|") ?? "";
+  useEffect(() => {
+    const projectId = snapshot?.project.id;
+    if (!projectId || !activeJobsKey) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const response = await fetch(`/api/projects/${projectId}`);
+          if (response.ok) setSnapshot(await response.json() as ProjectSnapshot);
+        } catch {
+          // El siguiente ciclo reintentará; no se altera el último snapshot válido.
+        }
+      })();
+    }, 2_500);
+    return () => window.clearInterval(timer);
+  }, [snapshot?.project.id, activeJobsKey]);
 
   async function switchWorkspace(workspaceId: string) {
     setBusy(true);
@@ -177,7 +196,7 @@ export function ResearchStudio({ user, workspaces, projects: initialProjects, in
   }
 
   if (!snapshot) return <><main className="state-page"><strong>NR</strong><h1>No hay investigaciones en {user.workspaceName}</h1><p>Este workspace está aislado y listo para su primer proyecto.</p><button onClick={() => setModal("project")}>Crear la primera</button></main>{modal === "project" && <Modal onClose={() => setModal(null)}><form onSubmit={createProject}><em>NUEVA INVESTIGACIÓN</em><h2>Configura el primer proyecto</h2><label>Nombre<input name="name" defaultValue="Radar semanal" required/></label><label>Área de investigación<input name="area" placeholder="Tecnología, energía, salud…" required/></label><div><label>Idioma<select name="language"><option>Español</option><option>English</option></select></label><label>Salida<select name="output"><option>Informe técnico</option><option>Vídeo documental</option><option>Podcast</option></select></label></div><label className="check"><input name="humanApproval" type="checkbox" defaultChecked/> Exigir aprobación humana</label><button className="primary submit" disabled={busy}>Crear investigación</button></form></Modal>}{message && <div className="toast">{message}</div>}</>;
-  const { project, sources, evidence, approvals, activity, objects, jobs, scans, documents } = snapshot;
+  const { project, sources, evidence, approvals, activity, objects, jobs, scans, documents, transcriptions } = snapshot;
   const verified = evidence.filter((item) => item.classification === "VERIFICADO").length;
   const averageConfidence = evidence.length ? Math.round(evidence.reduce((sum, item) => sum + item.confidence, 0) / evidence.length) : 0;
   const canEdit = ["owner", "admin", "editor"].includes(user.role);
@@ -185,7 +204,7 @@ export function ResearchStudio({ user, workspaces, projects: initialProjects, in
 
   return <div className="shell">
     <aside>
-      <div className="brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.6.1</small></b></div>
+      <div className="brand"><strong>N<span>R</span></strong><b>Research Studio<small>by norug.es · v0.6.2</small></b></div>
       <label className="workspace-switch">Workspace<select value={user.workspaceId} disabled={busy} onChange={(event) => switchWorkspace(event.target.value)}>{workspaces.map((workspace) => <option value={workspace.id} key={workspace.id}>{workspace.name} · {workspace.role}</option>)}</select></label>
       <nav>{["⌂  Centro de mando", `◇  Investigaciones  · ${projects.length}`, "⌁  Fuentes", "▱  Biblioteca", "—  PRODUCCIÓN", "◎  Guiones", "▷  Media Studio", "↗  Publicaciones", "—  SISTEMA", "⬡  Proveedores IA", "⚙  Configuración"].map((item, index) => <button className={index === 0 ? "active" : ""} key={item}>{item}</button>)}</nav>
       {["owner", "admin"].includes(user.role) && <button className="team-link" onClick={() => { window.location.href = "/team"; }}>👥 Gestionar equipo</button>}
@@ -204,36 +223,44 @@ export function ResearchStudio({ user, workspaces, projects: initialProjects, in
       </section>
       <div className="tabs">{["Pipeline", "Ingesta", "Evidencias", "Fuentes", "Actividad"].map((item) => <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>{item}{item === "Ingesta" && `　${objects.length}`}{item === "Evidencias" && `　${evidence.length}`}</button>)}</div>
       {tab === "Pipeline" && <Pipeline project={project} approvals={approvals.length} canApprove={canApprove} onReview={() => setTab("Evidencias")} onApprove={approveStage}/>} 
-      {tab === "Ingesta" && <IngestionPanel objects={objects} jobs={jobs} scans={scans} documents={documents} canEdit={canEdit} busy={busy} onUpload={() => setModal("upload")} onRetry={retryJob}/>} 
+      {tab === "Ingesta" && <IngestionPanel objects={objects} jobs={jobs} scans={scans} documents={documents} transcriptions={transcriptions} canEdit={canEdit} busy={busy} onUpload={() => setModal("upload")} onRetry={retryJob}/>} 
       {tab === "Evidencias" && <section className="panel evidence"><div className="title"><div><h2>Centro de evidencias</h2><p>Fuente, afirmación, hash SHA-256, custodia y confianza.</p></div><div>{canEdit && <button onClick={() => setModal("evidence")}>＋ Registrar</button>}<a className="link-button" href={`/api/export/evidence?projectId=${project.id}`}>Exportar manifiesto</a></div></div><div className="table"><div className="tr head"><span>Fuente</span><span>Afirmación</span><span>Confianza</span><span>Clasificación</span></div>{evidence.map((item) => <div className="tr" key={item.id}><b>{item.sourceTitle}<small>{item.sha256.slice(0, 18)}…</small></b><span>{item.claim}</span><b>{item.confidence}%</b><em className={item.confidence < 50 ? "bad" : item.confidence < 90 ? "prob" : ""}>{item.classification}</em></div>)}</div></section>}
       {tab === "Fuentes" && <section className="panel evidence"><div className="title"><div><h2>Fuentes de investigación</h2><p>Conectores preparados para vídeo, web, RSS, documentos y APIs.</p></div>{canEdit && <button onClick={() => setModal("source")}>＋ Añadir fuente</button>}</div><div className="source-list">{sources.map((source) => <article key={source.id}><i>{source.type.slice(0, 2).toUpperCase()}</i><div><h3>{source.title}</h3><p>{source.url || "Sin URL · fuente manual"}</p></div><em>{source.status}</em><b>{source.confidence}%</b></article>)}</div></section>}
       {tab === "Actividad" && <section className="panel evidence"><div className="title"><div><h2>Registro de auditoría</h2><p>Decisiones, cambios de estado, aprobaciones y altas.</p></div><span className="counter">{activity.length} eventos</span></div><div className="activity-list">{activity.map((item) => <article key={item.id}><i/><div><b>{item.action}</b><p>{item.detail}</p></div><small>{item.actor}<br/>{item.createdAt}</small></article>)}</div></section>}
     </main>
     {modal === "project" && <Modal onClose={() => setModal(null)}><form onSubmit={createProject}><em>NUEVA INVESTIGACIÓN</em><h2>Define el campo, no el proveedor</h2><p>El pipeline adapta fuentes, criterios y salida al área elegida.</p><label>Nombre<input name="name" defaultValue="Radar semanal" required/></label><label>Área de investigación<input name="area" defaultValue={project.area} required/></label><div><label>Idioma<select name="language"><option>Español</option><option>English</option></select></label><label>Salida<select name="output"><option>Informe técnico</option><option>Vídeo documental</option><option>Podcast</option></select></label></div><label className="check"><input name="humanApproval" type="checkbox" defaultChecked/> Exigir aprobación humana</label><button className="primary submit" disabled={busy}>Crear investigación</button></form></Modal>}
     {modal === "source" && <Modal onClose={() => setModal(null)}><form onSubmit={createSource}><em>NUEVA FUENTE</em><h2>Registra una fuente trazable</h2><label>Tipo<select name="type"><option>Web</option><option>YouTube</option><option>Twitch</option><option>RSS</option><option>Documento</option><option>API</option><option>Social</option></select></label><label>Título<input name="title" required/></label><label>URL<input name="url" type="url" placeholder="https://…"/></label><button className="primary submit" disabled={busy}>Añadir a la cola</button></form></Modal>}
-    {modal === "upload" && <Modal onClose={() => setModal(null)}><form onSubmit={uploadFile}><em>INGESTA SEGURA</em><h2>Sube material de investigación</h2><p>El archivo se deduplica, verifica por firma binaria, analiza con ClamAV y solo después se extrae o queda listo.</p><label>Archivo<input name="file" type="file" accept=".pdf,.docx,.txt,.md,.csv,.mp3,.wav,.m4a,.mp4,.webm,.mov" required/></label><small className="upload-help">PDF, DOCX, TXT, MD y CSV generan texto y fragmentos. Audio y vídeo quedan preparados para Whisper. Los archivos infectados se bloquean en cuarentena.</small><button className="primary submit" disabled={busy}>{busy ? "Subiendo…" : "Escanear y procesar"}</button></form></Modal>}
+    {modal === "upload" && <Modal onClose={() => setModal(null)}><form onSubmit={uploadFile}><em>INGESTA SEGURA</em><h2>Sube material de investigación</h2><p>El archivo se deduplica, verifica por firma binaria, analiza con ClamAV y después se extrae o transcribe.</p><label>Archivo<input name="file" type="file" accept=".pdf,.docx,.txt,.md,.csv,.mp3,.wav,.m4a,.mp4,.webm,.mov" required/></label><small className="upload-help">Los documentos generan texto y fragmentos. Audio y vídeo se transcriben con Whisper, idioma automático y timestamps. Los archivos infectados quedan bloqueados.</small><button className="primary submit" disabled={busy}>{busy ? "Subiendo…" : "Escanear y procesar"}</button></form></Modal>}
     {modal === "evidence" && <Modal onClose={() => setModal(null)}><form onSubmit={createEvidence}><em>NUEVA EVIDENCIA</em><h2>Registra una afirmación verificable</h2><label>Fuente<select name="sourceId"><option value="">Fuente manual</option>{sources.map((source) => <option value={source.id} key={source.id}>{source.title}</option>)}</select></label><label>Afirmación<textarea name="claim" required rows={4}/></label><label>Confianza (0–100)<input name="confidence" type="number" min="0" max="100" defaultValue="75" required/></label><button className="primary submit" disabled={busy}>Capturar y generar hash</button></form></Modal>}
     {modal === "workspace" && <Modal onClose={() => setModal(null)}><form onSubmit={createWorkspace}><em>NUEVO WORKSPACE</em><h2>Crea un entorno de investigación aislado</h2><p>Los proyectos y evidencias quedarán protegidos mediante PostgreSQL RLS.</p><label>Nombre<input name="name" placeholder="Equipo de investigación" required/></label><button className="primary submit" disabled={busy}>Crear workspace</button></form></Modal>}
     {message && <div className="toast">✓ {message}</div>}
   </div>;
 }
 
-function IngestionPanel({ objects, jobs, scans, documents, canEdit, busy, onUpload, onRetry }: {
+function IngestionPanel({ objects, jobs, scans, documents, transcriptions, canEdit, busy, onUpload, onRetry }: {
   objects: StoredObject[]; jobs: ProcessingJob[]; scans: SecurityScan[];
-  documents: ExtractedDocumentSummary[]; canEdit: boolean; busy: boolean;
+  documents: ExtractedDocumentSummary[]; transcriptions: TranscriptionSummary[];
+  canEdit: boolean; busy: boolean;
   onUpload: () => void; onRetry: (jobId: string) => void;
 }) {
   const jobByObject = new Map<string, ProcessingJob>();
   for (const job of jobs) if (!jobByObject.has(job.objectId)) jobByObject.set(job.objectId, job);
   const scanByObject = new Map(scans.map((scan) => [scan.objectId, scan]));
   const documentByObject = new Map(documents.map((document) => [document.objectId, document]));
-  return <section className="panel evidence ingestion-panel"><div className="title"><div><h2>Ingesta segura y extracción</h2><p>SHA-256 · firma binaria · ClamAV · cuarentena · texto normalizado y fragmentos trazables.</p></div>{canEdit && <button onClick={onUpload}>＋ Subir archivo</button>}</div>{objects.length === 0 ? <div className="ingestion-empty"><b>Sin objetos almacenados</b><p>Sube un documento, audio o vídeo para iniciar el pipeline.</p></div> : <div className="object-list">{objects.map((object) => { const job = jobByObject.get(object.id); const scan = scanByObject.get(object.id); const document = documentByObject.get(object.id); return <article key={object.id}><i>{object.contentType.startsWith("video/") ? "VID" : object.contentType.startsWith("audio/") ? "AUD" : "DOC"}</i><div><h3>{object.originalName}</h3><p>{formatBytes(object.sizeBytes)} · SHA-256 {object.sha256.slice(0, 16)}…</p>{scan && <p className={`scan-result ${scan.status}`}>ClamAV: {scan.status === "clean" ? "limpio" : scan.status === "infected" ? `amenaza ${scan.threatName ?? "detectada"}` : "error de análisis"} · {scan.detectedMime ?? "tipo sin determinar"}</p>}{document && <details className="extract-preview"><summary>{document.wordCount} palabras · {document.chunkCount} fragmentos · {document.pageCount ?? "—"} páginas</summary><p>{document.textPreview || "Sin texto; puede requerir OCR"}</p><small>Texto SHA-256 {document.textSha256.slice(0, 20)}… · {document.extractor}</small></details>}<u><b style={{ width: `${job?.progress ?? (["ready", "quarantined"].includes(object.status) ? 100 : 0)}%` }}/></u></div><div className="object-state"><em className={object.status}>{object.status}</em><small>{job ? `${job.jobType} · ${job.status} · intento ${job.attempts}/${job.maxAttempts}` : "sin trabajo"}</small></div>{object.status === "ready" && <a href={`/api/objects/${object.id}/download`}>Descargar</a>}{object.status === "quarantined" && <b className="quarantine-lock">Bloqueado</b>}{job && ["failed", "dead_letter"].includes(job.status) && canEdit && <button disabled={busy} onClick={() => onRetry(job.id)}>Reintentar</button>}</article>; })}</div>}</section>;
+  const transcriptionByObject = new Map(transcriptions.map((transcription) => [transcription.objectId, transcription]));
+  return <section className="panel evidence ingestion-panel"><div className="title"><div><h2>Ingesta, extracción y transcripción</h2><p>SHA-256 · ClamAV · documentos normalizados · Whisper · timestamps trazables.</p></div>{canEdit && <button onClick={onUpload}>＋ Subir archivo</button>}</div>{objects.length === 0 ? <div className="ingestion-empty"><b>Sin objetos almacenados</b><p>Sube un documento, audio o vídeo para iniciar el pipeline.</p></div> : <div className="object-list">{objects.map((object) => { const job = jobByObject.get(object.id); const scan = scanByObject.get(object.id); const document = documentByObject.get(object.id); const transcription = transcriptionByObject.get(object.id); return <article key={object.id}><i>{object.contentType.startsWith("video/") ? "VID" : object.contentType.startsWith("audio/") ? "AUD" : "DOC"}</i><div><h3>{object.originalName}</h3><p>{formatBytes(object.sizeBytes)} · SHA-256 {object.sha256.slice(0, 16)}…</p>{scan && <p className={`scan-result ${scan.status}`}>ClamAV: {scan.status === "clean" ? "limpio" : scan.status === "infected" ? `amenaza ${scan.threatName ?? "detectada"}` : "error de análisis"} · {scan.detectedMime ?? "tipo sin determinar"}</p>}{document && <details className="extract-preview"><summary>{document.wordCount} palabras · {document.chunkCount} fragmentos · {document.pageCount ?? "—"} páginas</summary><p>{document.textPreview || "Sin texto; puede requerir OCR"}</p><small>Texto SHA-256 {document.textSha256.slice(0, 20)}… · {document.extractor}</small></details>}{transcription && <details className="extract-preview transcript-preview"><summary>{formatDuration(transcription.durationSeconds)} · {transcription.segmentCount} segmentos · {transcription.wordCount} palabras · {transcription.detectedLanguage ?? "auto"}</summary><p>{transcription.textPreview || "Audio sin voz detectada"}</p><small>Transcripción SHA-256 {transcription.textSha256.slice(0, 20)}… · {transcription.model} · {transcription.device}/{transcription.computeType}</small></details>}<u><b style={{ width: `${job?.progress ?? (["ready", "quarantined"].includes(object.status) ? 100 : 0)}%` }}/></u></div><div className="object-state"><em className={object.status}>{object.status}</em><small>{job ? `${job.jobType} · ${job.status} · ${job.progress}% · intento ${job.attempts}/${job.maxAttempts}` : "sin trabajo"}</small></div>{object.status === "ready" && <a href={`/api/objects/${object.id}/download`}>Descargar</a>}{object.status === "quarantined" && <b className="quarantine-lock">Bloqueado</b>}{job && ["failed", "dead_letter"].includes(job.status) && canEdit && <button disabled={busy} onClick={() => onRetry(job.id)}>Reintentar</button>}</article>; })}</div>}</section>;
 }
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDuration(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function Pipeline({ project, approvals, canApprove, onReview, onApprove }: { project: ResearchProject; approvals: number; canApprove: boolean; onReview: () => void; onApprove: (status: "approved" | "rejected") => void }) {

@@ -1,7 +1,7 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.6.1 Secure Extraction**  
-Base analizada: paquete local **v0.6.1**  
+Versión revisada: **v0.6.2 Audiovisual Transcription**  
+Base analizada: paquete local **v0.6.2**  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ## Configuración
@@ -27,9 +27,9 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 ## Procesamiento
 
 - [-] Almacenar vídeo y audio con metadatos e integridad; conectores de descarga pendientes.
-- [ ] Transcribir automáticamente con Whisper.
-- [ ] Utilizar GPU/CUDA cuando esté disponible.
-- [ ] Generar marcas de tiempo precisas.
+- [x] Transcribir automáticamente audio y vídeo con faster-whisper.
+- [x] Utilizar CPU por defecto y GPU/CUDA mediante perfil opcional.
+- [x] Generar marcas de tiempo por segmento y palabra.
 - [x] Normalizar y fragmentar el contenido documental obtenido.
 - [x] Ejecutar tareas concurrentes mediante worker independiente y BullMQ/Redis.
 - [x] Implementar outbox, reintentos exponenciales, idempotencia y estado `dead_letter`.
@@ -109,6 +109,8 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Almacenamiento privado en S3/R2/MinIO con descarga temporal firmada.
 - [x] Deduplicación por SHA-256 y verificación de integridad desde el worker.
 - [x] Análisis ClamAV, firma binaria, cuarentena y bloqueo de descarga antes de extraer contenido.
+- [x] Transcripciones y segmentos audiovisuales persistentes con RLS, hashes e idioma detectado.
+- [x] Reconciliación idempotente de objetos incompletos y refresco automático de trabajos activos.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
 - [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.
@@ -127,10 +129,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ### P1 — Ingesta y procesamiento
 
-1. Whisper con marcas de tiempo y uso opcional de CUDA.
-2. OCR aislado para documentos sin capa textual.
-3. Conectores YouTube, RSS/web y aprobación de fuentes.
-4. Métricas y políticas de retención de objetos y cuarentena.
+1. OCR aislado para documentos sin capa textual.
+2. Conectores YouTube, RSS/web y aprobación de fuentes.
+3. Métricas de latencia, uso CPU/GPU y políticas de retención.
+4. División de medios largos, diarización y selección humana de idioma cuando sea necesario.
 
 ### P2 — Inteligencia editorial
 

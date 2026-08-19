@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { query, tenantQuery, withTenantTransaction, withTransaction, type TenantContext } from "./db.ts";
 import type { ExtractedContent } from "./extraction.ts";
-import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject } from "./types.ts";
+import type { TranscriptionResult } from "./transcriber.ts";
+import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject, TranscriptionSummary } from "./types.ts";
 import type { IngestionJobData } from "./queue.ts";
 
 const objectColumns = `id, project_id AS "projectId", source_id AS "sourceId",
@@ -49,6 +50,36 @@ export async function listExtractedDocuments(context: TenantContext, projectId: 
     (SELECT COUNT(*)::integer FROM document_chunks c WHERE c.document_id = d.id) AS "chunkCount"
     FROM extracted_documents d WHERE d.project_id = $1 ORDER BY d.extracted_at DESC`, [projectId]);
   return result.rows;
+}
+
+export async function listTranscriptions(context: TenantContext, projectId: string): Promise<TranscriptionSummary[]> {
+  const result = await tenantQuery<TranscriptionSummary>(context, `SELECT id,
+    object_id AS "objectId", engine, model, device, compute_type AS "computeType",
+    detected_language AS "detectedLanguage", language_probability AS "languageProbability",
+    duration_seconds AS "durationSeconds", text_sha256 AS "textSha256",
+    segment_count AS "segmentCount", word_count AS "wordCount",
+    LEFT(text_content, 800) AS "textPreview", transcribed_at::text AS "transcribedAt"
+    FROM transcriptions WHERE project_id = $1 ORDER BY transcribed_at DESC`, [projectId]);
+  return result.rows;
+}
+
+export async function getTranscription(context: TenantContext, objectId: string) {
+  return withTenantTransaction(context, async (client) => {
+    const transcription = await client.query(`SELECT id, object_id AS "objectId", engine,
+      model, device, compute_type AS "computeType", detected_language AS "detectedLanguage",
+      language_probability AS "languageProbability", duration_seconds AS "durationSeconds",
+      text_content AS text, text_sha256 AS "textSha256", segment_count AS "segmentCount",
+      word_count AS "wordCount", metadata, transcribed_at::text AS "transcribedAt"
+      FROM transcriptions WHERE object_id = $1`, [objectId]);
+    if (!transcription.rows[0]) return null;
+    const segments = await client.query(`SELECT segment_index AS "index",
+      start_ms::integer AS "startMs", end_ms::integer AS "endMs", content AS text,
+      content_sha256 AS "textSha256", avg_logprob AS "avgLogprob",
+      no_speech_prob AS "noSpeechProb", words
+      FROM transcription_segments WHERE transcription_id = $1 ORDER BY segment_index`,
+    [transcription.rows[0].id]);
+    return { ...transcription.rows[0], segments: segments.rows };
+  });
 }
 
 export async function findStoredObjectByHash(context: TenantContext, projectId: string, sha256: string) {
@@ -216,29 +247,38 @@ export async function quarantineObject(data: IngestionJobData, result: Record<st
   });
 }
 
-export async function enqueueExtraction(data: IngestionJobData, result: Record<string, unknown>) {
+async function enqueueStage(data: IngestionJobData, result: Record<string, unknown>, jobType: "extract" | "transcribe") {
   return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
     await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
       result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, JSON.stringify(result)]);
     const idempotencyKey = createHash("sha256")
-      .update(`${data.tenantId}:${data.projectId}:${data.objectId}:extract`).digest("hex");
+      .update(`${data.tenantId}:${data.projectId}:${data.objectId}:${jobType}`).digest("hex");
     const jobId = randomUUID();
     const inserted = await client.query<{ id: string }>(`INSERT INTO processing_jobs
       (id, tenant_id, project_id, object_id, job_type, idempotency_key, queue_job_id,
        status, max_attempts, created_by)
-      VALUES ($1, $2, $3, $4, 'extract', $5, $6, 'queued', 3, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', 3, $8)
       ON CONFLICT (idempotency_key) DO NOTHING RETURNING id`, [
-      jobId, data.tenantId, data.projectId, data.objectId, idempotencyKey, `${jobId}-1`, data.userId,
+      jobId, data.tenantId, data.projectId, data.objectId, jobType,
+      idempotencyKey, `${jobId}-1`, data.userId,
     ]);
     if (!inserted.rows[0]) return null;
     const payload: IngestionJobData = {
-      ...data, jobId, jobType: "extract", dispatchVersion: 1,
+      ...data, jobId, jobType, dispatchVersion: 1,
     };
     await client.query("INSERT INTO job_dispatch_outbox (job_id, payload) VALUES ($1, $2::jsonb)",
       [jobId, JSON.stringify(payload)]);
     return payload;
   });
+}
+
+export async function enqueueExtraction(data: IngestionJobData, result: Record<string, unknown>) {
+  return enqueueStage(data, result, "extract");
+}
+
+export async function enqueueTranscription(data: IngestionJobData, result: Record<string, unknown>) {
+  return enqueueStage(data, result, "transcribe");
 }
 
 export async function saveExtractedDocument(data: IngestionJobData, input: ExtractedContent & { detectedMime: string }) {
@@ -286,6 +326,120 @@ export async function saveExtractedDocument(data: IngestionJobData, input: Extra
       "Worker de extracción");
     return result;
   });
+}
+
+export async function saveTranscription(data: IngestionJobData, input: TranscriptionResult) {
+  return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    const objectResult = await client.query<{ sourceId: string | null; originalName: string }>(
+      `SELECT source_id AS "sourceId", original_name AS "originalName"
+       FROM stored_objects WHERE id = $1 FOR UPDATE`, [data.objectId]);
+    const object = objectResult.rows[0];
+    if (!object) throw new Error("Objeto no encontrado durante la transcripción");
+    const text = input.text.normalize("NFC").replace(/\s+/gu, " ").trim();
+    const textSha256 = createHash("sha256").update(text).digest("hex");
+    const wordCount = text ? text.split(/\s+/u).length : 0;
+    const transcriptionId = randomUUID();
+    const transcription = await client.query<{ id: string }>(`INSERT INTO transcriptions
+      (id, tenant_id, project_id, object_id, source_id, engine, model, device,
+       compute_type, detected_language, language_probability, duration_seconds,
+       text_content, text_sha256, segment_count, word_count, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
+      ON CONFLICT (object_id) DO UPDATE SET engine = EXCLUDED.engine, model = EXCLUDED.model,
+       device = EXCLUDED.device, compute_type = EXCLUDED.compute_type,
+       detected_language = EXCLUDED.detected_language,
+       language_probability = EXCLUDED.language_probability,
+       duration_seconds = EXCLUDED.duration_seconds, text_content = EXCLUDED.text_content,
+       text_sha256 = EXCLUDED.text_sha256, segment_count = EXCLUDED.segment_count,
+       word_count = EXCLUDED.word_count, metadata = EXCLUDED.metadata,
+       transcribed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      RETURNING id`, [transcriptionId, data.tenantId, data.projectId, data.objectId,
+      object.sourceId, input.engine, input.model, input.device, input.computeType,
+      input.language, input.languageProbability, input.duration, text, textSha256,
+      input.segments.length, wordCount, JSON.stringify({ durationAfterVad: input.durationAfterVad })]);
+    const persistedId = transcription.rows[0].id;
+    await client.query("DELETE FROM transcription_segments WHERE transcription_id = $1", [persistedId]);
+    for (const segment of input.segments) {
+      const content = segment.text.normalize("NFC").trim();
+      await client.query(`INSERT INTO transcription_segments
+        (id, tenant_id, project_id, transcription_id, object_id, segment_index,
+         start_ms, end_ms, content, content_sha256, avg_logprob, no_speech_prob, words)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`, [
+        randomUUID(), data.tenantId, data.projectId, persistedId, data.objectId,
+        segment.index, Math.round(segment.start * 1_000), Math.round(segment.end * 1_000),
+        content, createHash("sha256").update(content).digest("hex"), segment.avgLogprob,
+        segment.noSpeechProb, JSON.stringify(segment.words),
+      ]);
+    }
+    const result = { textSha256, wordCount, segments: input.segments.length,
+      durationSeconds: input.duration, language: input.language, model: input.model,
+      device: input.device, computeType: input.computeType };
+    await client.query(`UPDATE stored_objects SET status = 'ready', metadata = metadata || $2::jsonb,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.objectId, JSON.stringify({ transcription: result })]);
+    await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
+      result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, JSON.stringify(result)]);
+    if (object.sourceId) await client.query("UPDATE sources SET status = 'processed' WHERE id = $1", [object.sourceId]);
+    await logActivity(client, data.tenantId, data.projectId, "object.transcribed",
+      `${object.originalName}: ${input.segments.length} segmentos · ${input.duration.toFixed(1)} segundos · ${input.language ?? "idioma automático"}`,
+      "Worker de transcripción");
+    return result;
+  });
+}
+
+export async function reconcilePendingPipeline() {
+  const workspaces = await query<{ id: string }>("SELECT id FROM workspaces ORDER BY id");
+  const counts = { scan: 0, extract: 0, transcribe: 0 };
+  for (const workspace of workspaces.rows) {
+    const context = { tenantId: workspace.id, userId: "pipeline-reconciler" };
+    const objects = await tenantQuery<{
+      id: string; projectId: string; createdBy: string; contentType: string;
+      hasCleanScan: boolean; hasDocument: boolean; hasTranscription: boolean;
+      pendingScan: boolean; pendingExtract: boolean; pendingTranscription: boolean;
+    }>(context, `SELECT o.id, o.project_id AS "projectId", o.created_by AS "createdBy",
+      o.content_type AS "contentType",
+      EXISTS (SELECT 1 FROM security_scans s WHERE s.object_id = o.id AND s.status = 'clean') AS "hasCleanScan",
+      EXISTS (SELECT 1 FROM extracted_documents d WHERE d.object_id = o.id) AS "hasDocument",
+      EXISTS (SELECT 1 FROM transcriptions t WHERE t.object_id = o.id) AS "hasTranscription",
+      EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'scan'
+        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingScan",
+      EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'extract'
+        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingExtract",
+      EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'transcribe'
+        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingTranscription"
+      FROM stored_objects o WHERE o.status IN ('uploaded', 'ready') AND o.created_by IS NOT NULL`, []);
+    for (const object of objects.rows) {
+      let jobType: "scan" | "extract" | "transcribe" | null = null;
+      if (!object.hasCleanScan && !object.pendingScan) jobType = "scan";
+      else if (object.hasCleanScan && object.contentType.startsWith("audio/") &&
+        !object.hasTranscription && !object.pendingTranscription) jobType = "transcribe";
+      else if (object.hasCleanScan && object.contentType.startsWith("video/") &&
+        !object.hasTranscription && !object.pendingTranscription) jobType = "transcribe";
+      else if (object.hasCleanScan && !object.contentType.startsWith("audio/") &&
+        !object.contentType.startsWith("video/") && !object.hasDocument && !object.pendingExtract) jobType = "extract";
+      if (!jobType) continue;
+      const jobId = randomUUID();
+      const idempotencyKey = createHash("sha256")
+        .update(`${workspace.id}:${object.id}:${jobType}:reconcile-v062`).digest("hex");
+      const payload: IngestionJobData = { jobId, tenantId: workspace.id,
+        projectId: object.projectId, objectId: object.id, userId: object.createdBy,
+        jobType, dispatchVersion: 1 };
+      const inserted = await withTenantTransaction({ tenantId: workspace.id, userId: object.createdBy }, async (client) => {
+        const result = await client.query<{ id: string }>(`INSERT INTO processing_jobs
+          (id, tenant_id, project_id, object_id, job_type, idempotency_key, queue_job_id,
+           status, max_attempts, created_by)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', 3, $8)
+          ON CONFLICT (idempotency_key) DO NOTHING RETURNING id`, [jobId, workspace.id,
+          object.projectId, object.id, jobType, idempotencyKey, `${jobId}-1`, object.createdBy]);
+        if (!result.rows[0]) return false;
+        await client.query("INSERT INTO job_dispatch_outbox (job_id, payload) VALUES ($1, $2::jsonb)",
+          [jobId, JSON.stringify(payload)]);
+        await client.query("UPDATE stored_objects SET status = 'uploaded', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [object.id]);
+        return true;
+      });
+      if (inserted) counts[jobType] += 1;
+    }
+  }
+  return counts;
 }
 
 export async function markJobCompleted(data: IngestionJobData, result: Record<string, unknown>) {

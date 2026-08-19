@@ -81,6 +81,23 @@ export type ExtractedDocumentSummary = {
   extractedAt: string;
 };
 
+export type TranscriptionSummary = {
+  id: string;
+  objectId: string;
+  engine: string;
+  model: string;
+  device: string;
+  computeType: string;
+  detectedLanguage: string | null;
+  languageProbability: number | null;
+  durationSeconds: number;
+  textSha256: string;
+  segmentCount: number;
+  wordCount: number;
+  textPreview: string;
+  transcribedAt: string;
+};
+
 export type Evidence = {
   id: string;
   projectId: string;
@@ -122,6 +139,7 @@ export type ProjectSnapshot = {
   jobs: ProcessingJob[];
   scans: SecurityScan[];
   documents: ExtractedDocumentSummary[];
+  transcriptions: TranscriptionSummary[];
 };
 
 export type Workspace = {

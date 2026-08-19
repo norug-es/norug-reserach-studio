@@ -41,6 +41,28 @@ services:
       - clamav-v061-data:/var/lib/clamav
     restart: unless-stopped
 
+  transcriber:
+    build:
+      context: .
+      dockerfile: docker/transcriber/Dockerfile
+      target: cpu
+    ports:
+      - "127.0.0.1:${TRANSCRIBER_PORT:-8088}:8080"
+    environment:
+      TRANSCRIBER_API_KEY: ${TRANSCRIBER_API_KEY:-change-this-transcriber-key}
+      TRANSCRIBER_MAX_BYTES: ${TRANSCRIBER_MAX_BYTES:-52428800}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_CPU_THREADS: ${WHISPER_CPU_THREADS:-4}
+      WHISPER_NUM_WORKERS: ${WHISPER_NUM_WORKERS:-1}
+      WHISPER_BEAM_SIZE: ${WHISPER_BEAM_SIZE:-5}
+      WHISPER_PRELOAD: ${WHISPER_PRELOAD:-false}
+      WHISPER_MODEL_CACHE: /models
+    volumes:
+      - whisper-models-v062:/models
+    restart: unless-stopped
+
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
@@ -110,6 +132,10 @@ services:
       CLAMAV_PORT: "3310"
       CLAMAV_TIMEOUT_MS: ${CLAMAV_TIMEOUT_MS:-120000}
       EXTRACTED_TEXT_MAX_CHARS: ${EXTRACTED_TEXT_MAX_CHARS:-10000000}
+      TRANSCRIBER_URL: http://transcriber:8080
+      TRANSCRIBER_API_KEY: ${TRANSCRIBER_API_KEY:-change-this-transcriber-key}
+      TRANSCRIBER_TIMEOUT_MS: ${TRANSCRIBER_TIMEOUT_MS:-3600000}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-auto}
       S3_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -125,6 +151,8 @@ services:
         condition: service_healthy
       clamav:
         condition: service_healthy
+      transcriber:
+        condition: service_healthy
       minio:
         condition: service_healthy
     restart: unless-stopped
@@ -134,3 +162,4 @@ volumes:
   redis-v06-data:
   minio-v06-data:
   clamav-v061-data:
+  whisper-models-v062:

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { apiUser, authorized, forbidden, serverError, tenantContext, unauthorized } from "@/lib/api";
 import { getProject } from "@/lib/repository";
-import { createIngestionRecord, findStoredObjectByHash, listExtractedDocuments, listProcessingJobs, listSecurityScans, listStoredObjects } from "@/lib/ingestion";
+import { createIngestionRecord, findStoredObjectByHash, listExtractedDocuments, listProcessingJobs, listSecurityScans, listStoredObjects, listTranscriptions } from "@/lib/ingestion";
 import { deleteStoredObject, putStoredObject } from "@/lib/storage";
 import { maximumUploadBytes, UploadPolicyError, validateUpload } from "@/lib/upload-policy";
 import { consumeRateLimit, mutationOriginError, rateLimitKey, recordSecurityEvent } from "@/lib/security";
@@ -15,11 +15,11 @@ export async function GET(_request: Request, { params }: Context) {
   const { id } = await params;
   const context = tenantContext(user);
   if (!await getProject(context, id)) return Response.json({ error: "No encontrado" }, { status: 404 });
-  const [objects, jobs, scans, documents] = await Promise.all([
+  const [objects, jobs, scans, documents, transcriptions] = await Promise.all([
     listStoredObjects(context, id), listProcessingJobs(context, id),
-    listSecurityScans(context, id), listExtractedDocuments(context, id),
+    listSecurityScans(context, id), listExtractedDocuments(context, id), listTranscriptions(context, id),
   ]);
-  return Response.json({ objects, jobs, scans, documents });
+  return Response.json({ objects, jobs, scans, documents, transcriptions });
 }
 
 export async function POST(request: Request, { params }: Context) {

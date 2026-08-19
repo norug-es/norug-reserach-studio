@@ -1,4 +1,4 @@
-# NoRug Research Studio v0.6.1
+# NoRug Research Studio v0.6.2
 
 MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Funciona con **Next.js puro y PostgreSQL**; no utiliza Vite, Vinext, Wrangler ni Cloudflare Workers.
 
@@ -35,14 +35,19 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - Escaneo ClamAV previo al procesamiento, cuarentena persistente y descarga bloqueada.
 - Extracción de PDF, DOCX, TXT, Markdown y CSV con texto normalizado y hash independiente.
 - Fragmentación reproducible del texto para preparar búsqueda semántica y RAG.
+- Transcripción local de audio y vídeo con `faster-whisper`, detección de idioma y timestamps.
+- Segmentos y palabras temporizadas persistidos en PostgreSQL con RLS forzada.
+- Ejecución Whisper por CPU y perfil CUDA opcional mediante Docker Compose.
+- Reconciliación automática de objetos incompletos y actualización visual durante trabajos activos.
 
-Los conectores externos, IA generativa, Whisper, FFmpeg, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
+Los conectores externos, IA generativa, OCR, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
 
 ## Requisitos
 
 - Node.js 22.13 o superior.
 - npm 10 o superior.
-- Docker Desktop para levantar PostgreSQL, Redis, MinIO, ClamAV y el worker localmente.
+- Docker Desktop para levantar PostgreSQL, Redis, MinIO, ClamAV, Whisper y el worker localmente.
+- Para CUDA: GPU NVIDIA, controlador compatible y NVIDIA Container Toolkit/soporte GPU de Docker Desktop.
 
 ## Inicio rápido con Docker
 
@@ -63,8 +68,8 @@ Levanta las dependencias y el worker:
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d postgres redis minio clamav ingestion-worker
 npm install
+docker compose up -d postgres redis minio clamav transcriber ingestion-worker
 npm run db:migrate
 npm run dev
 ```
@@ -84,17 +89,44 @@ La migración 6 añade `stored_objects`, `processing_jobs` y el outbox. Los dos 
 
 La migración 7 añade dictámenes antimalware, documentos extraídos y fragmentos con RLS forzada. Los objetos aceptados por v0.6.0 se devuelven automáticamente a la cola para recibir su primer escaneo ClamAV; mientras tanto no se consideran nuevamente listos.
 
+La migración 8 añade transcripciones y segmentos audiovisuales con RLS forzada. Al arrancar el worker v0.6.2, la reconciliación crea de forma idempotente los trabajos de escaneo, extracción o transcripción que falten.
+
+## Actualizar desde v0.6.1
+
+Detén primero el worker anterior para que no consuma trabajos de la nueva versión:
+
+```powershell
+docker compose stop ingestion-worker research-studio
+npm install
+docker compose up -d postgres redis minio clamav
+docker compose build transcriber ingestion-worker research-studio
+npm run db:migrate
+docker compose up -d transcriber
+npm run test:transcriber
+docker compose up -d ingestion-worker research-studio
+npm run test:db
+npm run ingestion:health-check
+npm test
+docker compose ps
+```
+
+El primer trabajo puede tardar porque `faster-whisper` descarga el modelo configurado al volumen `whisper-models-v062`. El worker nuevo repara automáticamente objetos que no tengan dictamen, extracción o transcripción persistida.
+
 ## Actualizar desde v0.6.0
 
 Conserva los volúmenes existentes y añade las variables nuevas de `.env.example` a tu `.env`. Después ejecuta:
 
 ```powershell
+docker compose stop ingestion-worker research-studio
 npm install
 docker compose up -d postgres redis minio clamav
+docker compose build transcriber ingestion-worker research-studio
 npm run db:migrate
 npm run test:db
 npm run test:clamav
-docker compose up -d --build ingestion-worker research-studio
+docker compose up -d transcriber
+npm run test:transcriber
+docker compose up -d ingestion-worker research-studio
 npm run ingestion:health-check
 npm test
 docker compose ps
@@ -169,6 +201,13 @@ Para Supabase, Neon, RDS u otro PostgreSQL gestionado, utiliza su `DATABASE_URL`
 | `CLAMAV_HOST` / `CLAMAV_PORT` | Daemon privado de análisis antimalware |
 | `CLAMAV_TIMEOUT_MS` | Tiempo máximo por escaneo |
 | `EXTRACTED_TEXT_MAX_CHARS` | Límite defensivo del texto extraído |
+| `TRANSCRIBER_URL` | Endpoint privado del servicio Whisper |
+| `TRANSCRIBER_API_KEY` | Credencial interna independiente entre worker y transcriptor |
+| `TRANSCRIBER_TIMEOUT_MS` | Tiempo máximo de una transcripción |
+| `TRANSCRIBER_MAX_BYTES` | Límite aceptado por el servicio de transcripción |
+| `WHISPER_MODEL` | Modelo: `tiny`, `base`, `small`, `medium`, `large-v3`, etc. |
+| `WHISPER_LANGUAGE` | Idioma ISO o `auto` para detección automática |
+| `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | `cpu/int8` o `cuda/float16` |
 
 ## Identidad e invitaciones
 
@@ -188,7 +227,7 @@ Antes de desplegar, valida las variables críticas:
 npm run env:production-check
 ```
 
-El comando exige HTTPS, cookie segura, secretos independientes de al menos 32 caracteres, rol PostgreSQL no administrativo, TLS para bases remotas, webhook de identidad y parámetros válidos del servicio privado ClamAV.
+El comando exige HTTPS, cookie segura, secretos independientes, rol PostgreSQL no administrativo, TLS para servicios remotos y parámetros válidos de ClamAV y Whisper.
 
 ## Backup y restauración comprobada
 
@@ -208,10 +247,11 @@ Este backup cubre PostgreSQL, no los objetos de S3/MinIO. En producción debes a
 Formatos iniciales: PDF, DOCX, TXT, Markdown, CSV, MP3, WAV, M4A, MP4, WEBM y MOV. El límite por defecto es 50 MB y se configura con `UPLOAD_MAX_BYTES`.
 
 ```powershell
-docker compose up -d postgres redis minio clamav ingestion-worker
+docker compose up -d postgres redis minio clamav transcriber ingestion-worker
 npm run db:migrate
 npm run ingestion:health-check
 npm run test:clamav
+npm run test:transcriber
 npm run dev
 ```
 
@@ -221,7 +261,17 @@ Para ejecutar el worker directamente fuera de Docker:
 npm run worker:dev
 ```
 
-La v0.6.1 ejecuta `upload → firma → ClamAV → extracción → ready`. Un resultado infectado termina en `quarantined`, queda registrado y no obtiene URL de descarga. PDF, DOCX, TXT, Markdown y CSV producen texto y fragmentos. Los PDF basados únicamente en imágenes quedan señalados para OCR; audio y vídeo todavía esperan Whisper.
+Los comandos `npm run test:clamav`, `npm run test:transcriber` y `npm run ingestion:health-check` se ejecutan desde el host. Por ello, `.env` debe conservar `REDIS_URL=redis://localhost:6379`, `CLAMAV_HOST=localhost` y `TRANSCRIBER_URL=http://127.0.0.1:8088`. Compose sustituye automáticamente esos valores por `redis`, `clamav` y `http://transcriber:8080` dentro de los contenedores; esos nombres privados no resuelven desde PowerShell.
+
+La v0.6.2 ejecuta `upload → firma → ClamAV → extracción|transcripción → ready`. Un resultado infectado termina en `quarantined` y no obtiene URL de descarga. Los documentos producen texto y fragmentos; audio y vídeo producen texto, segmentos, palabras y timestamps. Los PDF basados únicamente en imágenes continúan señalados para OCR.
+
+CPU es el perfil predeterminado. Para utilizar CUDA:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build transcriber ingestion-worker
+```
+
+Comprueba primero `nvidia-smi`. Si Docker no reconoce la GPU, utiliza CPU; configurar `WHISPER_DEVICE=cuda` sin runtime NVIDIA hará fallar el transcriptor.
 
 ClamAV reduce riesgo, pero no demuestra que un archivo sea inocuo. La firma `clean` significa que el motor y las firmas instaladas no detectaron una amenaza conocida en ese momento.
 
@@ -234,6 +284,7 @@ npm run test:identity
 npm run test:security
 npm run test:ingestion
 npm run test:clamav
+npm run test:transcriber
 npm run typecheck:worker
 npm run build
 npm run test:db
@@ -257,6 +308,7 @@ npm run test:db
 | `POST` | `/api/invitations/accept` | Aceptar invitación y crear la sesión |
 | `GET/POST` | `/api/projects/:id/uploads` | Listar o cargar objetos de investigación |
 | `GET` | `/api/objects/:id/download` | Descarga privada mediante URL temporal firmada |
+| `GET` | `/api/objects/:id/transcription` | Texto completo y segmentos temporizados del objeto |
 | `POST` | `/api/jobs/:id/retry` | Reintentar un trabajo fallido o en dead-letter |
 | `GET/POST` | `/api/projects` | Listar y crear investigaciones |
 | `GET/POST` | `/api/workspaces` | Listar y crear workspaces |
@@ -290,6 +342,8 @@ lib/queue.ts         conexión BullMQ/Redis
 lib/clamav.ts        protocolo privado PING, VERSION e INSTREAM
 lib/file-inspection.ts firmas binarias y política UTF-8
 lib/extraction.ts    extracción, normalización y fragmentación
+lib/transcriber.ts   cliente privado Whisper y validación de segmentos
+docker/transcriber/  servicio faster-whisper CPU/CUDA
 scripts/migrate.ts   migración manual
 scripts/ingestion-worker.ts worker independiente
 scripts/*postgres*   backup y restauración aislada
@@ -300,6 +354,6 @@ tests/               checklist estructural e integración PostgreSQL
 
 La compilación genera `.next/standalone`. Publica el servicio detrás de Caddy, Nginx o Traefik con HTTPS y deja `AUTH_COOKIE_SECURE=true`. El número total de conexiones es `DATABASE_POOL_MAX × instancias`; ajústalo al límite del servidor o incorpora PgBouncer al escalar horizontalmente.
 
-`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.1 añade extracción y antimalware, pero todavía no incluye OCR ni Whisper. Antes de producción todavía hay que seleccionar un proveedor OIDC estable, conectar un gestor externo de secretos, proteger los servicios internos, usar TLS hacia proveedores remotos y programar backups coordinados de base de datos y objetos.
+`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.2 incluye transcripción local, pero todavía no incorpora OCR ni conectores audiovisuales externos. Antes de producción todavía hay que seleccionar OIDC, conectar un gestor de secretos, proteger servicios internos y programar backups coordinados de base de datos, objetos y modelos.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

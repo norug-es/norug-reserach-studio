@@ -601,6 +601,73 @@ const migrations: Migration[] = [
       END $backfill$;
     `,
   },
+  {
+    version: 8,
+    name: "audiovisual_transcriptions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS transcriptions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL UNIQUE REFERENCES stored_objects(id) ON DELETE CASCADE,
+        source_id TEXT REFERENCES sources(id) ON DELETE SET NULL,
+        engine TEXT NOT NULL,
+        model TEXT NOT NULL,
+        device TEXT NOT NULL,
+        compute_type TEXT NOT NULL,
+        detected_language TEXT,
+        language_probability DOUBLE PRECISION,
+        duration_seconds DOUBLE PRECISION NOT NULL CHECK (duration_seconds >= 0),
+        text_content TEXT NOT NULL,
+        text_sha256 CHAR(64) NOT NULL,
+        segment_count INTEGER NOT NULL CHECK (segment_count >= 0),
+        word_count INTEGER NOT NULL CHECK (word_count >= 0),
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        transcribed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_transcriptions_project
+        ON transcriptions(tenant_id, project_id, transcribed_at DESC);
+
+      CREATE TABLE IF NOT EXISTS transcription_segments (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        transcription_id TEXT NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL REFERENCES stored_objects(id) ON DELETE CASCADE,
+        segment_index INTEGER NOT NULL CHECK (segment_index >= 0),
+        start_ms BIGINT NOT NULL CHECK (start_ms >= 0),
+        end_ms BIGINT NOT NULL CHECK (end_ms >= start_ms),
+        content TEXT NOT NULL,
+        content_sha256 CHAR(64) NOT NULL,
+        avg_logprob DOUBLE PRECISION,
+        no_speech_prob DOUBLE PRECISION,
+        words JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (transcription_id, segment_index)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_transcription_segments_timeline
+        ON transcription_segments(tenant_id, project_id, transcription_id, start_ms);
+
+      ALTER TABLE transcriptions ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE transcriptions FORCE ROW LEVEL SECURITY;
+      ALTER TABLE transcription_segments ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE transcription_segments FORCE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS tenant_isolation ON transcriptions;
+      CREATE POLICY tenant_isolation ON transcriptions
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON transcription_segments;
+      CREATE POLICY tenant_isolation ON transcription_segments
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {

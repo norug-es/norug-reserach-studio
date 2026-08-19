@@ -7,7 +7,7 @@ export async function GET() {
       return Response.json({
         status: "unhealthy",
         service: "norug-research-studio",
-        version: "0.6.1",
+        version: "0.6.2",
         database: { engine: "postgresql", ...database },
         error: "DATABASE_URL utiliza un rol con SUPERUSER o BYPASSRLS",
       }, { status: 503 });
@@ -15,14 +15,14 @@ export async function GET() {
     return Response.json({
       status: "healthy",
       service: "norug-research-studio",
-      version: "0.6.1",
+      version: "0.6.2",
       database: { engine: "postgresql", ...database },
     });
   } catch (error) {
     return Response.json({
       status: "unhealthy",
       service: "norug-research-studio",
-      version: "0.6.1",
+      version: "0.6.2",
       database: { engine: "postgresql", connected: false },
       error: error instanceof Error ? error.message : "Database error",
     }, { status: 503 });

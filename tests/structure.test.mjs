@@ -135,6 +135,25 @@ test("implementa escaneo, cuarentena y extracción segura", () => {
   assert.match(text("scripts/ingestion-worker.ts"), /quarantineObject/);
 });
 
+test("implementa Whisper, timestamps, reconciliación y CUDA opcional", () => {
+  for (const path of [
+    "lib/transcriber.ts", "scripts/test-transcriber.ts", "docker/transcriber/app.py",
+    "docker/transcriber/Dockerfile", "docker/transcriber/requirements.txt",
+    "docker-compose.gpu.yml",
+    "app/api/objects/[id]/transcription/route.ts",
+  ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  const migration = text("lib/migrations.ts");
+  for (const table of ["transcriptions", "transcription_segments"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(text("docker/transcriber/requirements.txt"), /faster-whisper==/);
+  assert.match(text("docker-compose.yml"), /transcriber:/);
+  assert.match(text("docker-compose.gpu.yml"), /capabilities: \[gpu\]/);
+  assert.match(text("scripts/ingestion-worker.ts"), /enqueueTranscription/);
+  assert.match(text("scripts/ingestion-worker.ts"), /reconcilePendingPipeline/);
+  assert.match(text("components/research-studio.tsx"), /setInterval/);
+});
+
 test("el checklist marca PostgreSQL como implementado", () => {
   assert.match(text("Docs/Topics-Check-list.md"), /\[x\] Persistencia en PostgreSQL/);
 });

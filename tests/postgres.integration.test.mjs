@@ -7,7 +7,7 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
   try {
     await database.ensureDatabase();
     const health = await database.databaseHealth();
-    assert.equal(health.migrationVersion, 7);
+    assert.equal(health.migrationVersion, 8);
     assert.ok(health.database);
     assert.equal(health.rlsEnforced, true, "DATABASE_URL no debe usar superusuario ni BYPASSRLS");
     const identitySchema = await database.query(`SELECT
@@ -26,10 +26,13 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
       to_regclass('public.security_scans') IS NOT NULL AS "scansTable",
       to_regclass('public.extracted_documents') IS NOT NULL AS "documentsTable",
       to_regclass('public.document_chunks') IS NOT NULL AS "chunksTable",
+      to_regclass('public.transcriptions') IS NOT NULL AS "transcriptionsTable",
+      to_regclass('public.transcription_segments') IS NOT NULL AS "segmentsTable",
       (
         SELECT bool_and(relrowsecurity AND relforcerowsecurity)
         FROM pg_class WHERE relname IN ('stored_objects', 'processing_jobs',
-          'security_scans', 'extracted_documents', 'document_chunks')
+          'security_scans', 'extracted_documents', 'document_chunks',
+          'transcriptions', 'transcription_segments')
       ) AS "ingestionRls"`);
     assert.equal(identitySchema.rows[0].resetTable, true);
     assert.equal(identitySchema.rows[0].invitationLifecycle, true);
@@ -42,6 +45,8 @@ test("PostgreSQL aplica migraciones, conserva datos y fuerza aislamiento RLS", a
     assert.equal(identitySchema.rows[0].scansTable, true);
     assert.equal(identitySchema.rows[0].documentsTable, true);
     assert.equal(identitySchema.rows[0].chunksTable, true);
+    assert.equal(identitySchema.rows[0].transcriptionsTable, true);
+    assert.equal(identitySchema.rows[0].segmentsTable, true);
     assert.equal(identitySchema.rows[0].ingestionRls, true);
 
     const tenantA = { tenantId: "workspace-norug-lab", userId: "user-admin" };

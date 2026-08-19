@@ -1,0 +1,16 @@
+services:
+  transcriber:
+    build:
+      context: .
+      dockerfile: docker/transcriber/Dockerfile
+      target: gpu
+    environment:
+      WHISPER_DEVICE: cuda
+      WHISPER_COMPUTE_TYPE: float16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
