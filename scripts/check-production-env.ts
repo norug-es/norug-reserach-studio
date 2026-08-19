@@ -78,7 +78,21 @@ required("WHISPER_MODEL");
 required("WHISPER_DEVICE");
 required("WHISPER_COMPUTE_TYPE");
 
+required("EVIDENCE_SIGNING_KEY_ID");
+const evidencePrivatePem = Buffer.from(required("EVIDENCE_SIGNING_PRIVATE_KEY_B64"), "base64").toString("utf8");
+const evidencePrivateKey = createPrivateKey(evidencePrivatePem);
+if (evidencePrivateKey.asymmetricKeyType !== "ed25519") {
+  throw new Error("EVIDENCE_SIGNING_PRIVATE_KEY_B64 debe contener una clave Ed25519 PKCS#8");
+}
+positiveInteger("UPLOAD_BATCH_MAX_FILES", 1_000);
+positiveInteger("UPLOAD_BATCH_MAX_BYTES");
+positiveInteger("ARCHIVE_MAX_ENTRIES", 10_000);
+positiveInteger("ARCHIVE_MAX_ENTRY_BYTES");
+positiveInteger("ARCHIVE_MAX_UNCOMPRESSED_BYTES");
+positiveInteger("ARCHIVE_MAX_COMPRESSION_RATIO", 10_000);
+
 console.log(
   `Entorno de producción válido para ${appUrl.hostname}, PostgreSQL ${databaseUrl.hostname}, ` +
   `ClamAV ${clamavHost} y Whisper ${transcriberUrl.hostname}`,
 );
+import { createPrivateKey } from "node:crypto";

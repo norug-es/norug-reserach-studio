@@ -3,12 +3,14 @@ import type { PoolClient } from "pg";
 import { query, tenantQuery, withTenantTransaction, withTransaction, type TenantContext } from "./db.ts";
 import type { ExtractedContent } from "./extraction.ts";
 import type { TranscriptionResult } from "./transcriber.ts";
-import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject, TranscriptionDetail, TranscriptionSummary } from "./types.ts";
+import type { BundleEntrySummary, ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject, TranscriptionDetail, TranscriptionSummary } from "./types.ts";
 import type { IngestionJobData } from "./queue.ts";
 
 const objectColumns = `id, project_id AS "projectId", source_id AS "sourceId",
   original_name AS "originalName", content_type AS "contentType",
   size_bytes::integer AS "sizeBytes", sha256, status,
+  parent_object_id AS "parentObjectId", bundle_id AS "bundleId", relative_path AS "relativePath",
+  metadata->>'bundleStatus' AS "bundleStatus", metadata->>'bundleKeyId' AS "bundleKeyId",
   created_at::text AS "createdAt"`;
 const jobColumns = `id, project_id AS "projectId", object_id AS "objectId",
   job_type AS "jobType", status, progress, attempts, max_attempts AS "maxAttempts",
@@ -19,6 +21,7 @@ export type WorkerObject = {
   id: string; tenantId: string; projectId: string; sourceId: string | null;
   bucket: string; objectKey: string; originalName: string; contentType: string;
   sizeBytes: number; sha256: string;
+  parentObjectId: string | null; bundleId: string | null; relativePath: string | null;
 };
 
 export async function listStoredObjects(context: TenantContext, projectId: string): Promise<StoredObject[]> {
@@ -29,7 +32,7 @@ export async function listStoredObjects(context: TenantContext, projectId: strin
 
 export async function listProcessingJobs(context: TenantContext, projectId: string): Promise<ProcessingJob[]> {
   const result = await tenantQuery<ProcessingJob>(context,
-    `SELECT ${jobColumns} FROM processing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 100`, [projectId]);
+    `SELECT ${jobColumns} FROM processing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1000`, [projectId]);
   return result.rows;
 }
 
@@ -64,6 +67,16 @@ export async function listTranscriptions(context: TenantContext, projectId: stri
   return result.rows;
 }
 
+export async function listBundleEntries(context: TenantContext, projectId: string): Promise<BundleEntrySummary[]> {
+  const result = await tenantQuery<BundleEntrySummary>(context, `SELECT id,
+    bundle_id AS "bundleId", object_id AS "objectId", entry_index AS "index",
+    entry_path AS path, size_bytes::integer AS "sizeBytes", sha256, status,
+    rejection_reason AS "rejectionReason"
+    FROM evidence_bundle_entries WHERE project_id = $1
+    ORDER BY bundle_id, entry_index LIMIT 5000`, [projectId]);
+  return result.rows;
+}
+
 export async function getTranscription(context: TenantContext, objectId: string) {
   return withTenantTransaction(context, async (client) => {
     const transcription = await client.query<Omit<TranscriptionDetail, "segments" | "textPreview">>(`SELECT t.id,
@@ -93,6 +106,92 @@ export async function findStoredObjectByHash(context: TenantContext, projectId: 
   return result.rows[0] ?? null;
 }
 
+export async function ensureEvidenceBundle(data: IngestionJobData, archiveSha256: string) {
+  return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    const existing = await client.query<{ id: string }>(
+      "SELECT id FROM evidence_bundles WHERE archive_object_id = $1 FOR UPDATE", [data.objectId]);
+    if (existing.rows[0]) return existing.rows[0].id;
+    const id = randomUUID();
+    await client.query(`INSERT INTO evidence_bundles
+      (id, tenant_id, project_id, archive_object_id, archive_sha256, status, created_by)
+      VALUES ($1, $2, $3, $4, $5, 'processing', $6)`,
+    [id, data.tenantId, data.projectId, data.objectId, archiveSha256, data.userId]);
+    await client.query(`UPDATE stored_objects SET bundle_id = $2,
+      metadata = metadata || jsonb_build_object('bundleStatus', 'processing'),
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.objectId, id]);
+    return id;
+  });
+}
+
+export type BundleEntryRecord = {
+  index: number;
+  path: string;
+  sizeBytes: number;
+  sha256: string | null;
+  objectId: string | null;
+  status: "ingested" | "duplicate" | "rejected";
+  rejectionReason: string | null;
+};
+
+export async function finalizeEvidenceBundle(data: IngestionJobData, input: {
+  bundleId: string;
+  manifest: Record<string, unknown>;
+  manifestSha256: string;
+  signatureBase64: string;
+  publicKeyPem: string;
+  keyId: string;
+  entries: BundleEntryRecord[];
+}) {
+  return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
+    await client.query("DELETE FROM evidence_bundle_entries WHERE bundle_id = $1", [input.bundleId]);
+    for (const entry of input.entries) {
+      await client.query(`INSERT INTO evidence_bundle_entries
+        (id, tenant_id, project_id, bundle_id, object_id, entry_index, entry_path,
+         size_bytes, sha256, status, rejection_reason)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
+        randomUUID(), data.tenantId, data.projectId, input.bundleId, entry.objectId,
+        entry.index, entry.path, entry.sizeBytes, entry.sha256, entry.status, entry.rejectionReason,
+      ]);
+    }
+    await client.query(`UPDATE evidence_bundles SET manifest = $2::jsonb,
+      manifest_sha256 = $3, signature_base64 = $4, public_key_pem = $5, key_id = $6,
+      status = 'signed', error = NULL, signed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [input.bundleId,
+      JSON.stringify(input.manifest), input.manifestSha256, input.signatureBase64,
+      input.publicKeyPem, input.keyId]);
+    await client.query(`UPDATE stored_objects SET metadata = metadata || jsonb_build_object(
+      'bundleStatus', 'signed', 'bundleKeyId', $2::text), updated_at = CURRENT_TIMESTAMP
+      WHERE bundle_id = $1`, [input.bundleId, input.keyId]);
+  });
+}
+
+export async function markEvidenceBundleFailed(data: IngestionJobData, error: Error) {
+  await tenantQuery({ tenantId: data.tenantId, userId: data.userId }, `UPDATE evidence_bundles
+    SET status = 'failed', error = $2, updated_at = CURRENT_TIMESTAMP WHERE archive_object_id = $1`,
+  [data.objectId, error.message.slice(0, 2_000)]);
+}
+
+export async function getEvidenceBundleForVerification(context: TenantContext, bundleId: string) {
+  const result = await tenantQuery<{
+    id: string; archiveObjectId: string; archiveSha256: string; manifest: Record<string, unknown>;
+    manifestSha256: string | null; signatureAlgorithm: "Ed25519"; signatureBase64: string | null;
+    publicKeyPem: string | null; keyId: string | null; status: "processing" | "signed" | "failed";
+    signedAt: string | null; bucket: string; objectKey: string; sizeBytes: number;
+    entryCount: number; rejectedCount: number;
+  }>(context, `SELECT b.id, b.archive_object_id AS "archiveObjectId",
+    b.archive_sha256 AS "archiveSha256", b.manifest,
+    b.manifest_sha256 AS "manifestSha256", b.signature_algorithm AS "signatureAlgorithm",
+    b.signature_base64 AS "signatureBase64", b.public_key_pem AS "publicKeyPem",
+    b.key_id AS "keyId", b.status, b.signed_at::text AS "signedAt",
+    o.bucket, o.object_key AS "objectKey", o.size_bytes::integer AS "sizeBytes",
+    (SELECT COUNT(*)::integer FROM evidence_bundle_entries e WHERE e.bundle_id = b.id) AS "entryCount",
+    (SELECT COUNT(*)::integer FROM evidence_bundle_entries e
+      WHERE e.bundle_id = b.id AND e.status = 'rejected') AS "rejectedCount"
+    FROM evidence_bundles b JOIN stored_objects o ON o.id = b.archive_object_id
+    WHERE b.id = $1`, [bundleId]);
+  return result.rows[0] ?? null;
+}
+
 export async function createIngestionRecord(context: TenantContext, input: {
   objectId: string;
   objectKey: string;
@@ -101,10 +200,14 @@ export async function createIngestionRecord(context: TenantContext, input: {
   contentType: string;
   sizeBytes: number;
   sha256: string;
-  category: "document" | "audio" | "video";
+  category: "document" | "audio" | "video" | "archive";
   projectId: string;
   userId: string;
   actor: string;
+  parentObjectId?: string | null;
+  bundleId?: string | null;
+  relativePath?: string | null;
+  metadata?: Record<string, unknown>;
 }) {
   const sourceId = randomUUID();
   const jobId = randomUUID();
@@ -121,16 +224,21 @@ export async function createIngestionRecord(context: TenantContext, input: {
       (id, tenant_id, project_id, type, title, url, status, confidence)
       VALUES ($1, $2, $3, $4, $5, $6, 'queued', 50)`, [
       sourceId, context.tenantId, input.projectId,
-      input.category === "document" ? "Documento" : input.category === "audio" ? "Audio" : "Vídeo",
+      input.category === "document" ? "Documento" : input.category === "audio" ? "Audio" :
+        input.category === "video" ? "Vídeo" : "Paquete ZIP",
       input.originalName, `object://${input.objectId}`,
     ]);
     const objectResult = await client.query<StoredObject>(`INSERT INTO stored_objects
       (id, tenant_id, project_id, source_id, bucket, object_key, original_name,
-       content_type, size_bytes, sha256, status, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'uploaded', $11)
+       content_type, size_bytes, sha256, status, created_by, parent_object_id,
+       bundle_id, relative_path, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'uploaded', $11,
+        $12, $13, $14, $15::jsonb)
       RETURNING ${objectColumns}`, [
       input.objectId, context.tenantId, input.projectId, sourceId, input.bucket, input.objectKey,
       input.originalName, input.contentType, input.sizeBytes, input.sha256, input.userId,
+      input.parentObjectId ?? null, input.bundleId ?? null, input.relativePath ?? null,
+      JSON.stringify(input.metadata ?? {}),
     ]);
     const jobResult = await client.query<ProcessingJob>(`INSERT INTO processing_jobs
       (id, tenant_id, project_id, object_id, job_type, idempotency_key, queue_job_id,
@@ -159,7 +267,8 @@ export async function getWorkerObject(data: IngestionJobData): Promise<WorkerObj
   const result = await tenantQuery<WorkerObject>({ tenantId: data.tenantId, userId: data.userId },
     `SELECT id, tenant_id AS "tenantId", project_id AS "projectId", source_id AS "sourceId",
       bucket, object_key AS "objectKey", original_name AS "originalName",
-      content_type AS "contentType", size_bytes::integer AS "sizeBytes", sha256
+      content_type AS "contentType", size_bytes::integer AS "sizeBytes", sha256,
+      parent_object_id AS "parentObjectId", bundle_id AS "bundleId", relative_path AS "relativePath"
      FROM stored_objects WHERE id = $1 AND project_id = $2`, [data.objectId, data.projectId]);
   return result.rows[0] ?? null;
 }
@@ -269,7 +378,8 @@ export async function quarantineObject(data: IngestionJobData, result: Record<st
   });
 }
 
-async function enqueueStage(data: IngestionJobData, result: Record<string, unknown>, jobType: "extract" | "transcribe") {
+async function enqueueStage(data: IngestionJobData, result: Record<string, unknown>,
+  jobType: "extract" | "transcribe" | "expand_archive") {
   return withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
     await client.query(`UPDATE processing_jobs SET status = 'completed', progress = 100,
       result = $2::jsonb, error = NULL, completed_at = CURRENT_TIMESTAMP,
@@ -301,6 +411,10 @@ export async function enqueueExtraction(data: IngestionJobData, result: Record<s
 
 export async function enqueueTranscription(data: IngestionJobData, result: Record<string, unknown>) {
   return enqueueStage(data, result, "transcribe");
+}
+
+export async function enqueueArchiveExpansion(data: IngestionJobData, result: Record<string, unknown>) {
+  return enqueueStage(data, result, "expand_archive");
 }
 
 export async function saveExtractedDocument(data: IngestionJobData, input: ExtractedContent & { detectedMime: string }) {
@@ -410,38 +524,46 @@ export async function saveTranscription(data: IngestionJobData, input: Transcrip
 
 export async function reconcilePendingPipeline() {
   const workspaces = await query<{ id: string }>("SELECT id FROM workspaces ORDER BY id");
-  const counts = { scan: 0, extract: 0, transcribe: 0 };
+  const counts = { scan: 0, extract: 0, transcribe: 0, expand_archive: 0 };
   for (const workspace of workspaces.rows) {
     const context = { tenantId: workspace.id, userId: "pipeline-reconciler" };
     const objects = await tenantQuery<{
       id: string; projectId: string; createdBy: string; contentType: string;
       hasCleanScan: boolean; hasDocument: boolean; hasTranscription: boolean;
-      pendingScan: boolean; pendingExtract: boolean; pendingTranscription: boolean;
+      hasSignedBundle: boolean; pendingScan: boolean; pendingExtract: boolean;
+      pendingTranscription: boolean; pendingArchive: boolean;
     }>(context, `SELECT o.id, o.project_id AS "projectId", o.created_by AS "createdBy",
       o.content_type AS "contentType",
       EXISTS (SELECT 1 FROM security_scans s WHERE s.object_id = o.id AND s.status = 'clean') AS "hasCleanScan",
       EXISTS (SELECT 1 FROM extracted_documents d WHERE d.object_id = o.id) AS "hasDocument",
       EXISTS (SELECT 1 FROM transcriptions t WHERE t.object_id = o.id) AS "hasTranscription",
+      EXISTS (SELECT 1 FROM evidence_bundles b
+        WHERE b.archive_object_id = o.id AND b.status = 'signed') AS "hasSignedBundle",
       EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'scan'
         AND j.status IN ('queued', 'active', 'retrying')) AS "pendingScan",
       EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'extract'
         AND j.status IN ('queued', 'active', 'retrying')) AS "pendingExtract",
       EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'transcribe'
-        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingTranscription"
+        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingTranscription",
+      EXISTS (SELECT 1 FROM processing_jobs j WHERE j.object_id = o.id AND j.job_type = 'expand_archive'
+        AND j.status IN ('queued', 'active', 'retrying')) AS "pendingArchive"
       FROM stored_objects o WHERE o.status IN ('uploaded', 'ready') AND o.created_by IS NOT NULL`, []);
     for (const object of objects.rows) {
-      let jobType: "scan" | "extract" | "transcribe" | null = null;
+      let jobType: "scan" | "extract" | "transcribe" | "expand_archive" | null = null;
       if (!object.hasCleanScan && !object.pendingScan) jobType = "scan";
+      else if (object.hasCleanScan && object.contentType === "application/zip" &&
+        !object.hasSignedBundle && !object.pendingArchive) jobType = "expand_archive";
       else if (object.hasCleanScan && object.contentType.startsWith("audio/") &&
         !object.hasTranscription && !object.pendingTranscription) jobType = "transcribe";
       else if (object.hasCleanScan && object.contentType.startsWith("video/") &&
         !object.hasTranscription && !object.pendingTranscription) jobType = "transcribe";
-      else if (object.hasCleanScan && !object.contentType.startsWith("audio/") &&
-        !object.contentType.startsWith("video/") && !object.hasDocument && !object.pendingExtract) jobType = "extract";
+      else if (object.hasCleanScan && object.contentType !== "application/zip" &&
+        !object.contentType.startsWith("audio/") && !object.contentType.startsWith("video/") &&
+        !object.hasDocument && !object.pendingExtract) jobType = "extract";
       if (!jobType) continue;
       const jobId = randomUUID();
       const idempotencyKey = createHash("sha256")
-        .update(`${workspace.id}:${object.id}:${jobType}:reconcile-v062`).digest("hex");
+        .update(`${workspace.id}:${object.id}:${jobType}:reconcile-v066`).digest("hex");
       const payload: IngestionJobData = { jobId, tenantId: workspace.id,
         projectId: object.projectId, objectId: object.id, userId: object.createdBy,
         jobType, dispatchVersion: 1 };
@@ -489,6 +611,9 @@ export async function markJobFailed(data: IngestionJobData, error: Error, attemp
       WHERE id = $1`, [data.jobId, final ? "dead_letter" : "retrying", attempts, error.message.slice(0, 2_000), final]);
     if (final) {
       await client.query("UPDATE stored_objects SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [data.objectId]);
+      if (data.jobType === "expand_archive") await client.query(`UPDATE evidence_bundles
+        SET status = 'failed', error = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE archive_object_id = $1`, [data.objectId, error.message.slice(0, 2_000)]);
       await logActivity(client, data.tenantId, data.projectId, "object.failed",
         `${data.objectId}: ${error.message.slice(0, 300)}`, "Worker de ingesta");
     }

@@ -668,6 +668,79 @@ const migrations: Migration[] = [
         WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
     `,
   },
+  {
+    version: 9,
+    name: "signed_evidence_bundles",
+    sql: `
+      ALTER TABLE processing_jobs DROP CONSTRAINT IF EXISTS processing_jobs_job_type_check;
+      ALTER TABLE processing_jobs ADD CONSTRAINT processing_jobs_job_type_check
+        CHECK (job_type IN ('ingest', 'scan', 'extract', 'transcribe', 'expand_archive'));
+
+      CREATE TABLE IF NOT EXISTS evidence_bundles (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        archive_object_id TEXT NOT NULL UNIQUE REFERENCES stored_objects(id) ON DELETE CASCADE,
+        archive_sha256 CHAR(64) NOT NULL,
+        manifest JSONB NOT NULL DEFAULT '{}'::jsonb,
+        manifest_sha256 CHAR(64),
+        signature_algorithm TEXT NOT NULL DEFAULT 'Ed25519',
+        signature_base64 TEXT,
+        public_key_pem TEXT,
+        key_id TEXT,
+        status TEXT NOT NULL DEFAULT 'processing'
+          CHECK (status IN ('processing', 'signed', 'failed')),
+        error TEXT,
+        created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+        signed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE stored_objects
+        ADD COLUMN IF NOT EXISTS parent_object_id TEXT REFERENCES stored_objects(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS bundle_id TEXT REFERENCES evidence_bundles(id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS relative_path TEXT;
+
+      CREATE TABLE IF NOT EXISTS evidence_bundle_entries (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        bundle_id TEXT NOT NULL REFERENCES evidence_bundles(id) ON DELETE CASCADE,
+        object_id TEXT REFERENCES stored_objects(id) ON DELETE SET NULL,
+        entry_index INTEGER NOT NULL CHECK (entry_index >= 0),
+        entry_path TEXT NOT NULL,
+        size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
+        sha256 CHAR(64),
+        status TEXT NOT NULL CHECK (status IN ('ingested', 'duplicate', 'rejected')),
+        rejection_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (bundle_id, entry_path)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_evidence_bundles_project
+        ON evidence_bundles(tenant_id, project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_bundle_entries_bundle
+        ON evidence_bundle_entries(tenant_id, project_id, bundle_id, entry_index);
+      CREATE INDEX IF NOT EXISTS idx_stored_objects_bundle
+        ON stored_objects(tenant_id, project_id, bundle_id, created_at);
+
+      ALTER TABLE evidence_bundles ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE evidence_bundles FORCE ROW LEVEL SECURITY;
+      ALTER TABLE evidence_bundle_entries ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE evidence_bundle_entries FORCE ROW LEVEL SECURITY;
+
+      DROP POLICY IF EXISTS tenant_isolation ON evidence_bundles;
+      CREATE POLICY tenant_isolation ON evidence_bundles
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+
+      DROP POLICY IF EXISTS tenant_isolation ON evidence_bundle_entries;
+      CREATE POLICY tenant_isolation ON evidence_bundle_entries
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''))
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', TRUE), ''));
+    `,
+  },
 ];
 
 export async function runMigrations(client: PoolClient) {

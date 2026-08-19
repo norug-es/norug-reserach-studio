@@ -1,11 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Worker } from "bullmq";
 import {
   acknowledgeOutbox,
   applyDetectedMediaType,
   claimOutboxBatch,
+  createIngestionRecord,
   enqueueExtraction,
+  enqueueArchiveExpansion,
   enqueueTranscription,
+  ensureEvidenceBundle,
+  finalizeEvidenceBundle,
+  findStoredObjectByHash,
   getWorkerObject,
   markJobActive,
   markJobCompleted,
@@ -19,12 +24,15 @@ import {
   saveTranscription,
 } from "../lib/ingestion.ts";
 import { createIngestionQueue, createRedisConnection, INGESTION_QUEUE, type IngestionJobData } from "../lib/queue.ts";
-import { readVerifiedStoredObject } from "../lib/storage.ts";
+import { deleteStoredObject, putStoredObject, readVerifiedStoredObject } from "../lib/storage.ts";
 import { closeDb, ensureDatabase } from "../lib/db.ts";
 import { clamavHealth, scanWithClamav } from "../lib/clamav.ts";
 import { inspectFileSignature, isExtractableDocument } from "../lib/file-inspection.ts";
 import { extractDocument } from "../lib/extraction.ts";
 import { transcribeMedia, transcriberHealth, transcriptionJobProgress } from "../lib/transcriber.ts";
+import { extractSecureZip } from "../lib/archive.ts";
+import { assertEvidenceSigningReady, signEvidenceManifest } from "../lib/evidence-signing.ts";
+import { validateUpload } from "../lib/upload-policy.ts";
 
 const workerId = `worker-${randomUUID()}`;
 const queueConnection = createRedisConnection();
@@ -45,6 +53,115 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
   const verification = await readVerifiedStoredObject({
     bucket: object.bucket, key: object.objectKey, sha256: object.sha256, sizeBytes: object.sizeBytes,
   });
+
+  if (data.jobType === "expand_archive") {
+    assertEvidenceSigningReady();
+    await job.updateProgress(30);
+    await markJobProgress(data, 30, {
+      stage: "reading_archive", processedSeconds: null, durationSeconds: null,
+      elapsedSeconds: 0, etaSeconds: null, segmentIndex: null,
+    });
+    const bundleId = await ensureEvidenceBundle(data, verification.sha256);
+    const entries = extractSecureZip(verification.bytes);
+    const records: Array<{
+      index: number; path: string; sizeBytes: number; sha256: string | null;
+      objectId: string | null; status: "ingested" | "duplicate" | "rejected";
+      rejectionReason: string | null;
+    }> = [];
+    const manifestEntries: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const sha256 = createHash("sha256").update(entry.bytes).digest("hex");
+      let objectId: string | null = null;
+      let status: "ingested" | "duplicate" | "rejected" = "rejected";
+      let rejectionReason: string | null = null;
+      try {
+        const policy = validateUpload(entry.originalName, "", entry.sizeBytes);
+        if (policy.extension === ".zip") throw new Error("Los ZIP anidados no están permitidos");
+        const duplicate = await findStoredObjectByHash(
+          { tenantId: data.tenantId, userId: data.userId }, data.projectId, sha256);
+        if (duplicate) {
+          objectId = duplicate.id;
+          status = "duplicate";
+        } else {
+          objectId = randomUUID();
+          const key = `${data.tenantId}/${data.projectId}/${objectId}-${policy.originalName}`;
+          let stored: { bucket: string; key: string } | undefined;
+          try {
+            const bucket = await putStoredObject({
+              key, body: entry.bytes, contentType: policy.contentType, sha256,
+              tenantId: data.tenantId, projectId: data.projectId,
+            });
+            stored = { bucket, key };
+            await createIngestionRecord({ tenantId: data.tenantId, userId: data.userId }, {
+              objectId, objectKey: key, bucket, originalName: policy.originalName,
+              contentType: policy.contentType, sizeBytes: entry.sizeBytes, sha256,
+              category: policy.category, projectId: data.projectId, userId: data.userId,
+              actor: "Worker de paquetes", parentObjectId: data.objectId, bundleId,
+              relativePath: entry.path, metadata: {
+                bundleId, parentObjectId: data.objectId, archiveEntryPath: entry.path,
+                archiveEntryCrc32: entry.crc32,
+              },
+            });
+            status = "ingested";
+          } catch (error) {
+            if (stored) await deleteStoredObject(stored.bucket, stored.key).catch(() => undefined);
+            throw error;
+          }
+        }
+      } catch (error) {
+        objectId = null;
+        rejectionReason = error instanceof Error ? error.message : "Entrada no permitida";
+      }
+      records.push({ index, path: entry.path, sizeBytes: entry.sizeBytes, sha256,
+        objectId, status, rejectionReason });
+      manifestEntries.push({
+        index, path: entry.path, sizeBytes: entry.sizeBytes, compressedSize: entry.compressedSize,
+        sha256, crc32: entry.crc32, status, rejectionReason,
+      });
+      const progress = 35 + Math.round(((index + 1) / entries.length) * 45);
+      await job.updateProgress(progress);
+      await markJobProgress(data, progress, {
+        stage: "extracting_archive", processedSeconds: index + 1,
+        durationSeconds: entries.length, elapsedSeconds: 0, etaSeconds: null,
+        segmentIndex: index,
+      });
+    }
+    const manifest = {
+      manifestVersion: "norug.evidence-bundle.v1",
+      archive: {
+        objectId: data.objectId, originalName: object.originalName,
+        sizeBytes: verification.sizeBytes, sha256: verification.sha256,
+      },
+      policy: {
+        encryptedEntries: "rejected", nestedArchives: "rejected",
+        unsafePaths: "rejected", unsupportedFormats: "recorded-and-rejected",
+      },
+      entries: manifestEntries,
+    };
+    await job.updateProgress(90);
+    await markJobProgress(data, 90, {
+      stage: "signing_manifest", processedSeconds: entries.length,
+      durationSeconds: entries.length, elapsedSeconds: 0, etaSeconds: null,
+      segmentIndex: entries.length - 1,
+    });
+    const signature = signEvidenceManifest(manifest);
+    await finalizeEvidenceBundle(data, {
+      bundleId, manifest, manifestSha256: signature.manifestSha256,
+      signatureBase64: signature.signatureBase64, publicKeyPem: signature.publicKeyPem,
+      keyId: signature.keyId, entries: records,
+    });
+    const result = {
+      bundleId, archiveSha256: verification.sha256,
+      manifestSha256: signature.manifestSha256, signatureAlgorithm: "Ed25519",
+      keyId: signature.keyId, entries: entries.length,
+      ingested: records.filter((entry) => entry.status === "ingested").length,
+      duplicates: records.filter((entry) => entry.status === "duplicate").length,
+      rejected: records.filter((entry) => entry.status === "rejected").length,
+    };
+    await markJobCompleted(data, result);
+    return result;
+  }
 
   if (data.jobType === "extract") {
     await job.updateProgress(45);
@@ -144,6 +261,10 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
   if (isExtractableDocument(object.originalName)) {
     await enqueueExtraction(data, result);
     return { ...result, nextStage: "extract" };
+  }
+  if (signature.detectedMime === "application/zip") {
+    await enqueueArchiveExpansion(data, result);
+    return { ...result, nextStage: "expand_archive" };
   }
   if (signature.detectedMime.startsWith("audio/") || signature.detectedMime.startsWith("video/")) {
     await enqueueTranscription(data, result);

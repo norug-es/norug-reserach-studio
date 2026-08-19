@@ -6,11 +6,15 @@ const signatures: Record<string, { extensions: string[]; mimes: string[] }> = {
   mp3: { extensions: ["mp3"], mimes: ["audio/mpeg"] },
   wav: { extensions: ["wav"], mimes: ["audio/wav", "audio/x-wav"] },
   m4a: { extensions: ["m4a", "mp4"], mimes: ["audio/mp4", "audio/x-m4a", "video/mp4"] },
+  opus: { extensions: ["opus", "ogg"], mimes: ["audio/ogg", "audio/opus", "application/ogg"] },
+  "3gp": { extensions: ["3gp", "3gpp"], mimes: ["video/3gpp", "audio/3gpp"] },
+  "3gpp": { extensions: ["3gp", "3gpp"], mimes: ["video/3gpp", "audio/3gpp"] },
   mp4: { extensions: ["mp4", "m4v"], mimes: ["video/mp4"] },
   mpeg: { extensions: ["mpg", "mpeg", "mp3"], mimes: ["video/mpeg", "audio/mpeg"] },
   mpg: { extensions: ["mpg", "mpeg", "mp3"], mimes: ["video/mpeg", "audio/mpeg"] },
   webm: { extensions: ["webm"], mimes: ["video/webm", "audio/webm"] },
   mov: { extensions: ["mov"], mimes: ["video/quicktime"] },
+  zip: { extensions: ["zip"], mimes: ["application/zip"] },
 };
 
 const textExtensions = new Set(["txt", "md", "csv"]);
@@ -49,14 +53,15 @@ export async function inspectFileSignature(bytes: Uint8Array, fileName: string) 
   if (!policy) throw new FileSignatureError(`No existe política de firma para .${declaredExtension || "desconocido"}`);
   const detected = await fileTypeFromBuffer(bytes);
   if (!detected) throw new FileSignatureError("No se pudo reconocer la firma binaria del archivo");
+  const detectedMime = detected.mime.split(";", 1)[0].trim().toLowerCase();
   const extensionAllowed = policy.extensions.includes(detected.ext);
-  const mimeAllowed = policy.mimes.includes(detected.mime);
+  const mimeAllowed = policy.mimes.includes(detectedMime);
   if (!extensionAllowed && !mimeAllowed) {
     throw new FileSignatureError(
-      `La firma real ${detected.mime} (.${detected.ext}) no coincide con .${declaredExtension}`,
+      `La firma real ${detectedMime} (.${detected.ext}) no coincide con .${declaredExtension}`,
     );
   }
-  return { detectedExtension: detected.ext, detectedMime: detected.mime, binary: true };
+  return { detectedExtension: detected.ext, detectedMime, binary: true };
 }
 
 export function isExtractableDocument(fileName: string) {

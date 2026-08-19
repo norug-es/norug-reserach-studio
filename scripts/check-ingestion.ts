@@ -12,7 +12,7 @@ try {
     databaseHealth(), storageHealth(), redis.ping(), clamavHealth(), transcriberHealth(),
   ]);
   if (!database.rlsEnforced) throw new Error("El rol PostgreSQL omite RLS");
-  if (database.migrationVersion < 8) throw new Error("La migración 8 no está aplicada");
+  if (database.migrationVersion < 9) throw new Error("La migración 9 no está aplicada");
   if (redisReply !== "PONG") throw new Error("Redis no respondió PONG");
   console.log(`Ingesta preparada: PostgreSQL m${database.migrationVersion}, ` +
     `bucket ${storage.bucket}@${storage.endpoint}, Redis PONG, ClamAV ${clamavReply}, ` +

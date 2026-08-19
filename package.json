@@ -1,6 +1,6 @@
 {
   "name": "norug-research-studio",
-  "version": "0.6.4",
+  "version": "0.6.6",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -14,6 +14,7 @@
     "ingestion:health-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-ingestion.ts",
     "test:clamav": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/test-clamav.ts",
     "test:transcriber": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/test-transcriber.ts",
+    "evidence:keygen": "node --experimental-strip-types scripts/generate-evidence-key.ts",
     "db:env-check": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/check-env.ts",
     "predb:migrate": "npm run db:env-check",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types scripts/migrate.ts",
@@ -28,9 +29,10 @@
     "test:security": "node --experimental-strip-types --test tests/security.unit.test.mjs",
     "test:ingestion": "node --experimental-strip-types --test tests/ingestion.unit.test.mjs",
     "test:subtitles": "node --experimental-strip-types --test tests/subtitles.unit.test.mjs",
+    "test:archive": "node --experimental-strip-types --test tests/archive.unit.test.mjs",
     "pretest:db": "npm run db:env-check",
     "test:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.mjs",
-    "test": "npm run test:structure && npm run test:identity && npm run test:security && npm run test:ingestion && npm run test:subtitles && npm run build",
+    "test": "npm run test:structure && npm run test:identity && npm run test:security && npm run test:ingestion && npm run test:subtitles && npm run test:archive && npm run build",
     "check": "npm run lint && npm run test"
   },
   "dependencies": {

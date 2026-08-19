@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from faster_whisper import WhisperModel
 
 
-APP_VERSION = "0.6.4"
+APP_VERSION = "0.6.6"
 MODEL_NAME = os.getenv("WHISPER_MODEL", "small").strip()
 DEVICE = os.getenv("WHISPER_DEVICE", "cpu").strip()
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8").strip()
@@ -23,7 +23,10 @@ CPU_THREADS = max(1, int(os.getenv("WHISPER_CPU_THREADS", "4")))
 NUM_WORKERS = max(1, int(os.getenv("WHISPER_NUM_WORKERS", "1")))
 BEAM_SIZE = max(1, int(os.getenv("WHISPER_BEAM_SIZE", "5")))
 API_KEY = os.getenv("TRANSCRIBER_API_KEY", "").strip()
-ALLOWED_SUFFIXES = {".mp3", ".wav", ".m4a", ".mp4", ".mpeg", ".mpg", ".webm", ".mov"}
+ALLOWED_SUFFIXES = {
+    ".mp3", ".wav", ".m4a", ".opus", ".3gp", ".3gpp",
+    ".mp4", ".mpeg", ".mpg", ".webm", ".mov",
+}
 
 app = FastAPI(title="NoRug Whisper Transcriber", version=APP_VERSION, docs_url=None, redoc_url=None)
 model: WhisperModel | None = None

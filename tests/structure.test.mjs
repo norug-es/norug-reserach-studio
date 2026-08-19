@@ -162,6 +162,22 @@ test("implementa Whisper, timestamps, reconciliación y CUDA opcional", () => {
   assert.match(text("lib/upload-policy.ts"), /\.mpeg/);
 });
 
+test("implementa lotes, carpetas y paquetes ZIP firmados", () => {
+  for (const path of [
+    "lib/archive.ts", "lib/evidence-signing.ts", "scripts/generate-evidence-key.ts",
+    "tests/archive.unit.test.mjs", "app/api/bundles/[id]/verify/route.ts",
+  ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
+  const migration = text("lib/migrations.ts");
+  for (const table of ["evidence_bundles", "evidence_bundle_entries"]) {
+    assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(text("components/research-studio.tsx"), /webkitdirectory/);
+  assert.match(text("app/api/projects/[id]/uploads/route.ts"), /getAll\("files"\)/);
+  assert.match(text("scripts/ingestion-worker.ts"), /expand_archive/);
+  assert.match(text("lib/evidence-signing.ts"), /Ed25519|ed25519/);
+  assert.match(text("lib/archive.ts"), /Zip64 no está permitido/);
+});
+
 test("el checklist marca PostgreSQL como implementado", () => {
   assert.match(text("Docs/Topics-Check-list.md"), /\[x\] Persistencia en PostgreSQL/);
 });

@@ -30,7 +30,8 @@ export type StoredObjectStatus = "uploaded" | "processing" | "ready" | "failed" 
 export type ProcessingJobStatus = "queued" | "active" | "retrying" | "completed" | "failed" | "dead_letter";
 
 export type ProcessingProgressDetail = {
-  stage: "loading_model" | "waiting_inference" | "transcribing" | "finalizing";
+  stage: "loading_model" | "waiting_inference" | "transcribing" | "finalizing" |
+    "reading_archive" | "extracting_archive" | "signing_manifest";
   processedSeconds: number | null;
   durationSeconds: number | null;
   elapsedSeconds: number;
@@ -47,6 +48,11 @@ export type StoredObject = {
   sizeBytes: number;
   sha256: string;
   status: StoredObjectStatus;
+  parentObjectId: string | null;
+  bundleId: string | null;
+  relativePath: string | null;
+  bundleStatus: "processing" | "signed" | "failed" | null;
+  bundleKeyId: string | null;
   createdAt: string;
 };
 
@@ -54,7 +60,7 @@ export type ProcessingJob = {
   id: string;
   projectId: string;
   objectId: string;
-  jobType: "ingest" | "scan" | "extract" | "transcribe";
+  jobType: "ingest" | "scan" | "extract" | "transcribe" | "expand_archive";
   status: ProcessingJobStatus;
   progress: number;
   attempts: number;
@@ -63,6 +69,35 @@ export type ProcessingJob = {
   progressDetail: ProcessingProgressDetail | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type EvidenceBundleVerification = {
+  id: string;
+  archiveObjectId: string;
+  archiveSha256: string;
+  manifestSha256: string | null;
+  signatureAlgorithm: "Ed25519";
+  signatureBase64: string | null;
+  publicKeyPem: string | null;
+  keyId: string | null;
+  status: "processing" | "signed" | "failed";
+  signatureValid: boolean;
+  archiveHashMatches: boolean;
+  entryCount: number;
+  rejectedCount: number;
+  signedAt: string | null;
+};
+
+export type BundleEntrySummary = {
+  id: string;
+  bundleId: string;
+  objectId: string | null;
+  index: number;
+  path: string;
+  sizeBytes: number;
+  sha256: string | null;
+  status: "ingested" | "duplicate" | "rejected";
+  rejectionReason: string | null;
 };
 
 export type SecurityScan = {
@@ -176,6 +211,7 @@ export type ProjectSnapshot = {
   scans: SecurityScan[];
   documents: ExtractedDocumentSummary[];
   transcriptions: TranscriptionSummary[];
+  bundleEntries: BundleEntrySummary[];
 };
 
 export type Workspace = {

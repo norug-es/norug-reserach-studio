@@ -1,4 +1,4 @@
-# NoRug Research Studio v0.6.4
+# NoRug Research Studio v0.6.6
 
 MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Funciona con **Next.js puro y PostgreSQL**; no utiliza Vite, Vinext, Wrangler ni Cloudflare Workers.
 
@@ -44,6 +44,10 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - Previsualización audiovisual autenticada con streaming HTTP `Range`, sin depender de redirecciones públicas de MinIO.
 - Ingesta y transcripción de vídeo MPEG/MPG; la reproducción en navegador sigue dependiendo del códec incorporado en el archivo.
 - Normalización segura de archivos MP3 disfrazados con sufijo `.mpeg`/`.mpg`, conservando su MIME real como audio.
+- Ingesta, firma binaria y transcripción local de audio OPUS y contenedores 3GP/3GPP.
+- Carga múltiple y selección de carpetas conservando la ruta relativa de cada archivo.
+- Ingesta de ZIP como evidencia raíz: ClamAV, expansión segura, hijos en la parrilla y manifiesto SHA-256 firmado con Ed25519.
+- Verificación autenticada del archivo raíz, hash del manifiesto y firma pública del paquete.
 
 Los conectores externos, IA generativa, OCR, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
 
@@ -96,24 +100,32 @@ La migración 7 añade dictámenes antimalware, documentos extraídos y fragment
 
 La migración 8 añade transcripciones y segmentos audiovisuales con RLS forzada. Al arrancar el worker v0.6.2, la reconciliación crea de forma idempotente los trabajos de escaneo, extracción o transcripción que falten.
 
-La v0.6.4 no añade migraciones. Incorpora progreso vivo entre Whisper, worker, PostgreSQL y frontend; además sirve audio/vídeo en el mismo origen con soporte de rangos, acepta `.mpeg`/`.mpg` y corrige los MP3 con extensión compuesta `.mp3.mpeg`.
+La migración 9 añade `evidence_bundles`, `evidence_bundle_entries` y filiación entre el ZIP raíz y sus objetos hijos. Ambas tablas nuevas aplican RLS forzada.
 
-## Actualizar desde v0.6.2 o v0.6.3
+## Actualizar desde v0.6.2–v0.6.5
 
-Espera a que termine cualquier transcripción activa y después reconstruye los tres servicios modificados:
+Genera una clave Ed25519 una sola vez y guárdala como secreto persistente en `.env` y en el gestor de secretos del VPS:
+
+```powershell
+npm run evidence:keygen
+```
+
+Después espera a que termine cualquier transcripción activa y reconstruye los servicios:
 
 ```powershell
 docker compose stop ingestion-worker transcriber research-studio
 npm install
 docker compose build --no-cache transcriber
 docker compose build ingestion-worker research-studio
+docker compose up -d postgres
+npm run db:migrate
 docker compose up -d --force-recreate transcriber
 docker compose up -d --force-recreate ingestion-worker research-studio
 npm test
 docker compose ps
 ```
 
-No ejecutes `db:migrate`: el progreso detallado reutiliza el campo JSONB existente de los trabajos.
+No regeneres la clave al desplegar: perderías la continuidad criptográfica entre paquetes históricos y nuevos.
 
 ## Actualizar desde v0.6.1
 
@@ -289,7 +301,7 @@ npm run worker:dev
 
 Los comandos `npm run test:clamav`, `npm run test:transcriber` y `npm run ingestion:health-check` se ejecutan desde el host. Por ello, `.env` debe conservar `REDIS_URL=redis://localhost:6379`, `CLAMAV_HOST=localhost` y `TRANSCRIBER_URL=http://127.0.0.1:8088`. Compose sustituye automáticamente esos valores por `redis`, `clamav` y `http://transcriber:8080` dentro de los contenedores; esos nombres privados no resuelven desde PowerShell.
 
-La v0.6.4 ejecuta `upload → firma → ClamAV → extracción|transcripción → ready`. Un resultado infectado termina en `quarantined` y no obtiene URL de descarga. Los documentos producen texto y fragmentos; audio y vídeo producen texto, segmentos, palabras y timestamps. Los PDF basados únicamente en imágenes continúan señalados para OCR.
+La v0.6.6 ejecuta `lote → firma binaria → ClamAV → extracción|transcripción → ready`. Para ZIP ejecuta `ZIP raíz → ClamAV → expansión segura → SHA-256 por entrada → hijos → manifiesto Ed25519`. El ZIP original nunca se sustituye por su contenido.
 
 CPU es el perfil predeterminado. Para utilizar CUDA:
 
@@ -310,6 +322,7 @@ npm run test:identity
 npm run test:security
 npm run test:ingestion
 npm run test:subtitles
+npm run test:archive
 npm run test:clamav
 npm run test:transcriber
 npm run typecheck:worker
@@ -334,6 +347,7 @@ npm run test:db
 | `DELETE` | `/api/account/sessions/:id` | Revocar una sesión propia |
 | `POST` | `/api/invitations/accept` | Aceptar invitación y crear la sesión |
 | `GET/POST` | `/api/projects/:id/uploads` | Listar o cargar objetos de investigación |
+| `GET` | `/api/bundles/:id/verify` | Verificar hash raíz, manifiesto y firma Ed25519 |
 | `GET` | `/api/objects/:id/download` | Descarga privada mediante URL temporal firmada |
 | `GET` | `/api/objects/:id/transcription` | Texto completo y segmentos temporizados del objeto |
 | `GET` | `/api/objects/:id/transcription?format=srt` | Subtítulos SubRip descargables |
@@ -372,6 +386,8 @@ lib/clamav.ts        protocolo privado PING, VERSION e INSTREAM
 lib/file-inspection.ts firmas binarias y política UTF-8
 lib/extraction.ts    extracción, normalización y fragmentación
 lib/transcriber.ts   cliente privado Whisper y validación de segmentos
+lib/archive.ts       parser ZIP defensivo, límites y protección Zip Slip/bombas
+lib/evidence-signing.ts manifiestos canónicos y firma Ed25519
 docker/transcriber/  servicio faster-whisper CPU/CUDA
 scripts/migrate.ts   migración manual
 scripts/ingestion-worker.ts worker independiente
@@ -383,6 +399,6 @@ tests/               checklist estructural e integración PostgreSQL
 
 La compilación genera `.next/standalone`. Publica el servicio detrás de Caddy, Nginx o Traefik con HTTPS y deja `AUTH_COOKIE_SECURE=true`. El número total de conexiones es `DATABASE_POOL_MAX × instancias`; ajústalo al límite del servidor o incorpora PgBouncer al escalar horizontalmente.
 
-`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.4 incluye transcripción local con progreso vivo, pero todavía no incorpora OCR ni conectores audiovisuales externos. Antes de producción todavía hay que seleccionar OIDC, conectar un gestor de secretos, proteger servicios internos y programar backups coordinados de base de datos, objetos y modelos.
+`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.6 incluye lotes y paquetes verificables, pero aún usa `multipart/form-data` a través de Next.js: para cargas masivas de varios GB deberá evolucionar a subida directa multipart S3. Antes de producción todavía hay que seleccionar OIDC, conectar un gestor de secretos, proteger servicios internos y programar backups coordinados de base de datos, objetos y claves.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

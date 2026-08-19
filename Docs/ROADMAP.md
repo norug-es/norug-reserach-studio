@@ -1,6 +1,6 @@
 # Roadmap de producto — NoRug Research Studio
 
-Estado base: **v0.6.4 Media Signature Hotfix**  
+Estado base: **v0.6.6 Signed Batch Intake**  
 Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable que automatice la investigación, la verificación editorial y la producción de contenidos sin eliminar el control humano.
 
 ## Principios de ejecución
@@ -62,6 +62,8 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - **v0.6.2 Audiovisual Transcription:** faster-whisper privado, migración 8, idioma, timestamps, palabras, CPU/CUDA y reconciliación automática.
 - **v0.6.3 Live Transcription & Media Streaming:** progreso NDJSON y ETA en frontend, logs de avance, streaming autenticado con rangos y soporte de ingesta MPEG/MPG.
 - **v0.6.4 Media Signature Hotfix:** reconoce MP3 con sufijo `.mpeg`/`.mpg`, persiste el MIME audiovisual real y diferencia errores de firma de errores ClamAV.
+- **v0.6.5 Universal Audio Intake:** admite OPUS y audio 3GP/3GPP, valida sus firmas reales y los procesa con FFmpeg/Whisper.
+- **v0.6.6 Signed Batch Intake:** carga múltiple y de carpetas, ZIP raíz inmutable, expansión defensiva, filiación, manifiesto SHA-256 y firma Ed25519 verificable.
 - [x] S3, R2 o MinIO para objetos binarios.
 - [x] Redis y BullMQ para tareas asíncronas.
 - [x] Estados de trabajo, reintentos, idempotencia y dead-letter queue.
@@ -72,6 +74,9 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - [x] Whisper con timestamps, detección de idioma y segmentos persistentes.
 - [x] Progreso de transcripción visible en vivo, con fase, timeline procesada y ETA aproximada.
 - [x] Reproducción same-origin mediante HTTP Range y compatibilidad de ingesta MPEG/MPG.
+- [x] Ingesta y transcripción OPUS y 3GP/3GPP.
+- [x] Carga múltiple, selección de carpetas y rutas relativas.
+- [x] ZIP raíz con hijos trazables, límites anti-bomba y firma Ed25519.
 - [x] Perfil CPU por defecto y CUDA opcional mediante Compose.
 - Conectores YouTube, RSS/web y APIs personalizadas.
 - Selección y aprobación humana de fuentes.
@@ -116,11 +121,11 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 
 ## Orden inmediato de implementación
 
-1. Validar la migración 8 y una transcripción real CPU/CUDA en la infraestructura de destino.
-2. Añadir OCR aislado para PDF sin capa de texto.
-3. Añadir conectores YouTube/RSS/web con aprobación humana.
-4. Incorporar métricas operativas del worker, ClamAV y Whisper.
-5. Seleccionar OIDC y gestor externo de secretos antes del despliegue público.
+1. v0.6.7: subida directa multipart S3, reanudación y cuotas para lotes grandes.
+2. v0.6.8: normalización FFmpeg, `ffprobe` y división reanudable de medios largos.
+3. Añadir OCR aislado para PDF sin capa de texto.
+4. Añadir conectores YouTube/RSS/web con aprobación humana.
+5. Incorporar métricas y gestión externa de secretos, incluida la clave Ed25519.
 
 ## Condiciones que bloquean el avance
 

@@ -1,7 +1,7 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.6.4 Media Signature Hotfix**  
-Base analizada: paquete local **v0.6.4**  
+Versión revisada: **v0.6.6 Signed Batch Intake**  
+Base analizada: paquete local **v0.6.6**  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ## Configuración
@@ -20,6 +20,8 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [ ] Incorporar vídeos o directos de Twitch.
 - [ ] Recopilar noticias, páginas web y RSS.
 - [x] Importar y extraer PDF, DOCX, TXT, Markdown y CSV con hash del texto.
+- [x] Cargar varios archivos o una carpeta completa preservando rutas relativas.
+- [x] Expandir ZIP seguros y conservar el paquete original como fuente raíz.
 - [ ] Conectar APIs y fuentes personalizadas.
 - [ ] Filtrar fuentes por fechas, temas y relevancia.
 - [ ] Permitir que el humano seleccione qué materiales procesar.
@@ -41,6 +43,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Diferenciar entre verificado, probable, hipotético y no demostrado.
 - [x] Vincular cada afirmación con su fuente.
 - [x] Generar hashes SHA-256 para las evidencias.
+- [x] Firmar mediante Ed25519 el manifiesto del ZIP y verificarlo contra el objeto raíz.
 - [x] Exportar manifiesto firmado por hash incluyendo la custodia de objetos binarios.
 - [ ] Cruzar información entre varias fuentes.
 - [ ] Detectar contradicciones.
@@ -116,6 +119,8 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Streaming audiovisual autenticado con HTTP Range para duración, reproducción y seek.
 - [x] Ingesta y transcripción de vídeo MPEG/MPG.
 - [x] Normalización de MP3 con extensión compuesta `.mp3.mpeg`/`.mp3.mpg` y persistencia del MIME real.
+- [x] Validación y transcripción de OPUS y audio 3GP/3GPP mediante FFmpeg/Whisper.
+- [x] Lotes, carpetas y ZIP con filiación raíz/hijos, protección Zip Slip/Zip64/bombas y RLS.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
 - [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.
@@ -134,10 +139,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ### P1 — Ingesta y procesamiento
 
-1. OCR aislado para documentos sin capa textual.
-2. Conectores YouTube, RSS/web y aprobación de fuentes.
-3. Métricas de latencia, uso CPU/GPU y políticas de retención.
-4. División de medios largos, diarización y selección humana de idioma cuando sea necesario.
+1. Subida directa multipart S3 con reanudación para lotes de gran tamaño.
+2. Normalización y división reanudable de medios largos.
+3. OCR aislado para documentos sin capa textual.
+4. Conectores YouTube, RSS/web y aprobación de fuentes.
 
 ### P2 — Inteligencia editorial
 
