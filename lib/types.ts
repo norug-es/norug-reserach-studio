@@ -29,6 +29,15 @@ export type ResearchSource = {
 export type StoredObjectStatus = "uploaded" | "processing" | "ready" | "failed" | "quarantined";
 export type ProcessingJobStatus = "queued" | "active" | "retrying" | "completed" | "failed" | "dead_letter";
 
+export type ProcessingProgressDetail = {
+  stage: "loading_model" | "waiting_inference" | "transcribing" | "finalizing";
+  processedSeconds: number | null;
+  durationSeconds: number | null;
+  elapsedSeconds: number;
+  etaSeconds: number | null;
+  segmentIndex: number | null;
+};
+
 export type StoredObject = {
   id: string;
   projectId: string;
@@ -51,6 +60,7 @@ export type ProcessingJob = {
   attempts: number;
   maxAttempts: number;
   error: string | null;
+  progressDetail: ProcessingProgressDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -96,6 +106,32 @@ export type TranscriptionSummary = {
   wordCount: number;
   textPreview: string;
   transcribedAt: string;
+};
+
+export type TranscriptionWordDetail = {
+  start: number;
+  end: number;
+  word: string;
+  probability: number | null;
+};
+
+export type TranscriptionSegmentDetail = {
+  index: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+  textSha256: string;
+  avgLogprob: number | null;
+  noSpeechProb: number | null;
+  words: TranscriptionWordDetail[];
+};
+
+export type TranscriptionDetail = TranscriptionSummary & {
+  originalName: string;
+  contentType: string;
+  text: string;
+  metadata: Record<string, unknown>;
+  segments: TranscriptionSegmentDetail[];
 };
 
 export type Evidence = {

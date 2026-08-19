@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Worker } from "bullmq";
 import {
   acknowledgeOutbox,
+  applyDetectedMediaType,
   claimOutboxBatch,
   enqueueExtraction,
   enqueueTranscription,
@@ -23,7 +24,7 @@ import { closeDb, ensureDatabase } from "../lib/db.ts";
 import { clamavHealth, scanWithClamav } from "../lib/clamav.ts";
 import { inspectFileSignature, isExtractableDocument } from "../lib/file-inspection.ts";
 import { extractDocument } from "../lib/extraction.ts";
-import { transcribeMedia, transcriberHealth } from "../lib/transcriber.ts";
+import { transcribeMedia, transcriberHealth, transcriptionJobProgress } from "../lib/transcriber.ts";
 
 const workerId = `worker-${randomUUID()}`;
 const queueConnection = createRedisConnection();
@@ -56,9 +57,35 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
 
   if (data.jobType === "transcribe") {
     await job.updateProgress(40);
-    await markJobProgress(data, 40);
+    await markJobProgress(data, 40, {
+      stage: "loading_model", processedSeconds: null, durationSeconds: null,
+      elapsedSeconds: 0, etaSeconds: null, segmentIndex: null,
+    });
+    let lastLoggedBucket = -1;
     const transcription = await transcribeMedia(
       verification.bytes, object.originalName, object.contentType,
+      async (update) => {
+        const progress = transcriptionJobProgress(update.progress);
+        const detail = {
+          stage: update.stage,
+          processedSeconds: update.processedSeconds,
+          durationSeconds: update.durationSeconds,
+          elapsedSeconds: update.elapsedSeconds,
+          etaSeconds: update.etaSeconds,
+          segmentIndex: update.segmentIndex,
+        };
+        await Promise.all([
+          job.updateProgress(progress),
+          markJobProgress(data, progress, detail),
+        ]);
+        const bucket = Math.floor(progress / 10);
+        if (bucket > lastLoggedBucket) {
+          lastLoggedBucket = bucket;
+          const timeline = update.processedSeconds !== null && update.durationSeconds !== null
+            ? ` · ${Math.round(update.processedSeconds)}s/${Math.round(update.durationSeconds)}s` : "";
+          console.log(`Transcripción en progreso: ${progress}%${timeline} · ${object.originalName}`);
+        }
+      },
     );
     await job.updateProgress(90);
     await markJobProgress(data, 90);
@@ -77,6 +104,7 @@ const worker = new Worker<IngestionJobData>(INGESTION_QUEUE, async (job) => {
     });
     throw error;
   }
+  await applyDetectedMediaType(data, signature.detectedMime, signature.detectedExtension);
   await job.updateProgress(45);
   await markJobProgress(data, 45);
 

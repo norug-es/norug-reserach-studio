@@ -1,7 +1,7 @@
 # Checklist validado — NoRug Research Studio
 
-Versión revisada: **v0.6.2 Audiovisual Transcription**  
-Base analizada: paquete local **v0.6.2**  
+Versión revisada: **v0.6.4 Media Signature Hotfix**  
+Base analizada: paquete local **v0.6.4**  
 Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 
 ## Configuración
@@ -30,6 +30,7 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Transcribir automáticamente audio y vídeo con faster-whisper.
 - [x] Utilizar CPU por defecto y GPU/CUDA mediante perfil opcional.
 - [x] Generar marcas de tiempo por segmento y palabra.
+- [x] Buscar dentro de la transcripción, navegar el medio por timestamp y exportar SRT/VTT.
 - [x] Normalizar y fragmentar el contenido documental obtenido.
 - [x] Ejecutar tareas concurrentes mediante worker independiente y BullMQ/Redis.
 - [x] Implementar outbox, reintentos exponenciales, idempotencia y estado `dead_letter`.
@@ -111,6 +112,10 @@ Leyenda: `[x]` implementado · `[-]` parcial · `[ ]` pendiente
 - [x] Análisis ClamAV, firma binaria, cuarentena y bloqueo de descarga antes de extraer contenido.
 - [x] Transcripciones y segmentos audiovisuales persistentes con RLS, hashes e idioma detectado.
 - [x] Reconciliación idempotente de objetos incompletos y refresco automático de trabajos activos.
+- [x] Progreso Whisper vivo con fase, timeline, ETA y heartbeat persistido en PostgreSQL.
+- [x] Streaming audiovisual autenticado con HTTP Range para duración, reproducción y seek.
+- [x] Ingesta y transcripción de vídeo MPEG/MPG.
+- [x] Normalización de MP3 con extensión compuesta `.mp3.mpeg`/`.mp3.mpg` y persistencia del MIME real.
 - [ ] Control de consumo y costes por proveedor.
 - [ ] Suscripciones y facturación.
 - [-] Webhooks e integración con n8n; identidad implementada, eventos de investigación pendientes.

@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { query, tenantQuery, withTenantTransaction, withTransaction, type TenantContext } from "./db.ts";
 import type { ExtractedContent } from "./extraction.ts";
 import type { TranscriptionResult } from "./transcriber.ts";
-import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject, TranscriptionSummary } from "./types.ts";
+import type { ExtractedDocumentSummary, ProcessingJob, SecurityScan, StoredObject, TranscriptionDetail, TranscriptionSummary } from "./types.ts";
 import type { IngestionJobData } from "./queue.ts";
 
 const objectColumns = `id, project_id AS "projectId", source_id AS "sourceId",
@@ -12,7 +12,8 @@ const objectColumns = `id, project_id AS "projectId", source_id AS "sourceId",
   created_at::text AS "createdAt"`;
 const jobColumns = `id, project_id AS "projectId", object_id AS "objectId",
   job_type AS "jobType", status, progress, attempts, max_attempts AS "maxAttempts",
-  error, created_at::text AS "createdAt", updated_at::text AS "updatedAt"`;
+  error, result->'progressDetail' AS "progressDetail",
+  created_at::text AS "createdAt", updated_at::text AS "updatedAt"`;
 
 export type WorkerObject = {
   id: string; tenantId: string; projectId: string; sourceId: string | null;
@@ -65,20 +66,23 @@ export async function listTranscriptions(context: TenantContext, projectId: stri
 
 export async function getTranscription(context: TenantContext, objectId: string) {
   return withTenantTransaction(context, async (client) => {
-    const transcription = await client.query(`SELECT id, object_id AS "objectId", engine,
-      model, device, compute_type AS "computeType", detected_language AS "detectedLanguage",
-      language_probability AS "languageProbability", duration_seconds AS "durationSeconds",
-      text_content AS text, text_sha256 AS "textSha256", segment_count AS "segmentCount",
-      word_count AS "wordCount", metadata, transcribed_at::text AS "transcribedAt"
-      FROM transcriptions WHERE object_id = $1`, [objectId]);
+    const transcription = await client.query<Omit<TranscriptionDetail, "segments" | "textPreview">>(`SELECT t.id,
+      t.object_id AS "objectId", o.original_name AS "originalName", o.content_type AS "contentType",
+      t.engine, t.model, t.device, t.compute_type AS "computeType",
+      t.detected_language AS "detectedLanguage", t.language_probability AS "languageProbability",
+      t.duration_seconds AS "durationSeconds", t.text_content AS text,
+      t.text_sha256 AS "textSha256", t.segment_count AS "segmentCount",
+      t.word_count AS "wordCount", t.metadata, t.transcribed_at::text AS "transcribedAt"
+      FROM transcriptions t JOIN stored_objects o ON o.id = t.object_id
+      WHERE t.object_id = $1`, [objectId]);
     if (!transcription.rows[0]) return null;
-    const segments = await client.query(`SELECT segment_index AS "index",
+    const segments = await client.query<TranscriptionDetail["segments"][number]>(`SELECT segment_index AS "index",
       start_ms::integer AS "startMs", end_ms::integer AS "endMs", content AS text,
       content_sha256 AS "textSha256", avg_logprob AS "avgLogprob",
       no_speech_prob AS "noSpeechProb", words
       FROM transcription_segments WHERE transcription_id = $1 ORDER BY segment_index`,
     [transcription.rows[0].id]);
-    return { ...transcription.rows[0], segments: segments.rows };
+    return { ...transcription.rows[0], textPreview: transcription.rows[0].text.slice(0, 800), segments: segments.rows };
   });
 }
 
@@ -143,8 +147,10 @@ export async function createIngestionRecord(context: TenantContext, input: {
 }
 
 export async function getStoredObjectForDownload(context: TenantContext, objectId: string) {
-  const result = await tenantQuery<{ bucket: string; objectKey: string; originalName: string }>(context,
-    `SELECT bucket, object_key AS "objectKey", original_name AS "originalName"
+  const result = await tenantQuery<{ bucket: string; objectKey: string; originalName: string;
+    contentType: string; sizeBytes: number }>(context,
+    `SELECT bucket, object_key AS "objectKey", original_name AS "originalName",
+      content_type AS "contentType", size_bytes::integer AS "sizeBytes"
      FROM stored_objects WHERE id = $1 AND status = 'ready'`, [objectId]);
   return result.rows[0] ?? null;
 }
@@ -191,16 +197,32 @@ export async function markJobActive(data: IngestionJobData, attempt: number) {
   await withTenantTransaction({ tenantId: data.tenantId, userId: data.userId }, async (client) => {
     await client.query(`UPDATE processing_jobs SET status = 'active', progress = 10,
       attempts = $2, error = NULL, started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+      result = COALESCE(result, '{}'::jsonb) - 'progressDetail',
       updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [data.jobId, attempt]);
     await client.query(`UPDATE stored_objects SET status = 'processing', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1`, [data.objectId]);
   });
 }
 
-export async function markJobProgress(data: IngestionJobData, progress: number) {
+export async function markJobProgress(data: IngestionJobData, progress: number,
+  detail?: ProcessingJob["progressDetail"]) {
   await tenantQuery({ tenantId: data.tenantId, userId: data.userId },
-    `UPDATE processing_jobs SET progress = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-    [data.jobId, Math.max(0, Math.min(99, Math.round(progress)))]);
+    `UPDATE processing_jobs SET progress = $2,
+      result = CASE WHEN $3::jsonb IS NULL THEN result
+        ELSE COALESCE(result, '{}'::jsonb) || jsonb_build_object('progressDetail', $3::jsonb) END,
+      updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    [data.jobId, Math.max(0, Math.min(99, Math.round(progress))),
+      detail ? JSON.stringify(detail) : null]);
+}
+
+export async function applyDetectedMediaType(data: IngestionJobData, detectedMime: string,
+  detectedExtension: string) {
+  if (!["audio/mpeg", "video/mpeg"].includes(detectedMime)) return;
+  await tenantQuery({ tenantId: data.tenantId, userId: data.userId },
+    `UPDATE stored_objects SET content_type = $2,
+      metadata = metadata || jsonb_build_object('detectedMedia', jsonb_build_object(
+        'mime', $2::text, 'extension', $3::text)), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1`, [data.objectId, detectedMime, detectedExtension]);
 }
 
 export async function recordSecurityScan(data: IngestionJobData, input: {

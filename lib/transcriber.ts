@@ -28,6 +28,22 @@ export type TranscriptionResult = {
   segments: TranscriptionSegment[];
 };
 
+export type TranscriptionProgress = {
+  stage: "loading_model" | "waiting_inference" | "transcribing" | "finalizing";
+  progress: number;
+  processedSeconds: number | null;
+  durationSeconds: number | null;
+  elapsedSeconds: number;
+  etaSeconds: number | null;
+  segmentIndex: number | null;
+};
+
+type ProgressCallback = (progress: TranscriptionProgress) => void | Promise<void>;
+
+type StreamEvent = Record<string, unknown> & {
+  type: "status" | "heartbeat" | "metadata" | "segment" | "complete" | "error";
+};
+
 function config() {
   const url = process.env.TRANSCRIBER_URL?.trim();
   const token = process.env.TRANSCRIBER_API_KEY?.trim();
@@ -102,6 +118,45 @@ async function checkedResponse(response: Response) {
   return payload;
 }
 
+export function parseTranscriberEventLine(line: string): StreamEvent {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(line);
+  } catch {
+    throw new Error("El transcriptor devolvió una línea NDJSON inválida");
+  }
+  if (!payload || typeof payload !== "object" || typeof (payload as Record<string, unknown>).type !== "string") {
+    throw new Error("El transcriptor devolvió un evento inválido");
+  }
+  const event = payload as StreamEvent;
+  if (!["status", "heartbeat", "metadata", "segment", "complete", "error"].includes(event.type)) {
+    throw new Error(`Evento desconocido del transcriptor: ${event.type}`);
+  }
+  return event;
+}
+
+export function transcriptionJobProgress(serviceProgress: number) {
+  const normalized = Math.max(0, Math.min(100, Number.isFinite(serviceProgress) ? serviceProgress : 0));
+  return Math.max(40, Math.min(90, Math.round(40 + normalized * 0.5)));
+}
+
+function progressFromEvent(event: StreamEvent): TranscriptionProgress {
+  const rawStage = typeof event.stage === "string" ? event.stage : "transcribing";
+  const stage = ["loading_model", "waiting_inference", "transcribing", "finalizing"].includes(rawStage)
+    ? rawStage as TranscriptionProgress["stage"] : "transcribing";
+  const segment = event.segment && typeof event.segment === "object"
+    ? event.segment as Record<string, unknown> : null;
+  return {
+    stage,
+    progress: Math.max(0, Math.min(100, finite(event.progress, 0) ?? 0)),
+    processedSeconds: finite(event.processedSeconds),
+    durationSeconds: finite(event.durationSeconds),
+    elapsedSeconds: Math.max(0, finite(event.elapsedSeconds, 0) ?? 0),
+    etaSeconds: finite(event.etaSeconds),
+    segmentIndex: finite(segment?.index),
+  };
+}
+
 export async function transcriberHealth() {
   const settings = config();
   const response = await fetch(`${settings.url}/health`, {
@@ -113,7 +168,12 @@ export async function transcriberHealth() {
   return payload;
 }
 
-export async function transcribeMedia(bytes: Uint8Array, fileName: string, contentType: string) {
+export async function transcribeMedia(
+  bytes: Uint8Array,
+  fileName: string,
+  contentType: string,
+  onProgress?: ProgressCallback,
+) {
   const settings = config();
   const form = new FormData();
   const payload = new ArrayBuffer(bytes.byteLength);
@@ -121,11 +181,43 @@ export async function transcribeMedia(bytes: Uint8Array, fileName: string, conte
   form.set("file", new Blob([payload], { type: contentType }), fileName);
   form.set("language", settings.language);
   form.set("word_timestamps", "true");
-  const response = await fetch(`${settings.url}/v1/transcriptions`, {
+  const response = await fetch(`${settings.url}/v1/transcriptions/stream`, {
     method: "POST",
     headers: { "x-internal-token": settings.token },
     body: form,
     signal: AbortSignal.timeout(settings.timeoutMs),
   });
-  return normalizeTranscriptionResponse(await checkedResponse(response));
+  if (!response.ok) await checkedResponse(response);
+  if (!response.body) throw new Error("El transcriptor no abrió el canal de progreso");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: TranscriptionResult | null = null;
+
+  const consume = async (line: string): Promise<TranscriptionResult | null> => {
+    if (!line.trim()) return null;
+    const event = parseTranscriberEventLine(line);
+    if (event.type === "error") {
+      throw new Error(typeof event.message === "string" ? event.message : "La transcripción ha fallado");
+    }
+    if (event.type === "complete") {
+      const completed = normalizeTranscriptionResponse(event.result);
+      await onProgress?.({ ...progressFromEvent(event), stage: "finalizing", progress: 100 });
+      return completed;
+    }
+    await onProgress?.(progressFromEvent(event));
+    return null;
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) result = await consume(line) ?? result;
+    if (done) break;
+  }
+  if (buffer.trim()) result = await consume(buffer) ?? result;
+  if (!result) throw new Error("El transcriptor cerró el canal sin resultado final");
+  return result;
 }

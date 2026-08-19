@@ -141,17 +141,25 @@ test("implementa Whisper, timestamps, reconciliación y CUDA opcional", () => {
     "docker/transcriber/Dockerfile", "docker/transcriber/requirements.txt",
     "docker-compose.gpu.yml",
     "app/api/objects/[id]/transcription/route.ts",
+    "lib/subtitles.ts", "tests/subtitles.unit.test.mjs",
   ]) assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), true, path);
   const migration = text("lib/migrations.ts");
   for (const table of ["transcriptions", "transcription_segments"]) {
     assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
   assert.match(text("docker/transcriber/requirements.txt"), /faster-whisper==/);
+  assert.match(text("docker/transcriber/requirements.txt"), /requests==/);
   assert.match(text("docker-compose.yml"), /transcriber:/);
   assert.match(text("docker-compose.gpu.yml"), /capabilities: \[gpu\]/);
   assert.match(text("scripts/ingestion-worker.ts"), /enqueueTranscription/);
   assert.match(text("scripts/ingestion-worker.ts"), /reconcilePendingPipeline/);
   assert.match(text("components/research-studio.tsx"), /setInterval/);
+  assert.match(text("components/research-studio.tsx"), /TranscriptViewer/);
+  assert.match(text("app/api/objects/[id]/transcription/route.ts"), /toSrt/);
+  assert.match(text("docker/transcriber/app.py"), /transcriptions\/stream/);
+  assert.match(text("scripts/ingestion-worker.ts"), /transcriptionJobProgress/);
+  assert.match(text("app/api/objects/[id]/download/route.ts"), /Accept-Ranges/);
+  assert.match(text("lib/upload-policy.ts"), /\.mpeg/);
 });
 
 test("el checklist marca PostgreSQL como implementado", () => {

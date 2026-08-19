@@ -7,6 +7,8 @@ const signatures: Record<string, { extensions: string[]; mimes: string[] }> = {
   wav: { extensions: ["wav"], mimes: ["audio/wav", "audio/x-wav"] },
   m4a: { extensions: ["m4a", "mp4"], mimes: ["audio/mp4", "audio/x-m4a", "video/mp4"] },
   mp4: { extensions: ["mp4", "m4v"], mimes: ["video/mp4"] },
+  mpeg: { extensions: ["mpg", "mpeg", "mp3"], mimes: ["video/mpeg", "audio/mpeg"] },
+  mpg: { extensions: ["mpg", "mpeg", "mp3"], mimes: ["video/mpeg", "audio/mpeg"] },
   webm: { extensions: ["webm"], mimes: ["video/webm", "audio/webm"] },
   mov: { extensions: ["mov"], mimes: ["video/quicktime"] },
 };

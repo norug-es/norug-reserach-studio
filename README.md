@@ -1,4 +1,4 @@
-# NoRug Research Studio v0.6.2
+# NoRug Research Studio v0.6.4
 
 MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fuente hasta la aprobación editorial. Funciona con **Next.js puro y PostgreSQL**; no utiliza Vite, Vinext, Wrangler ni Cloudflare Workers.
 
@@ -37,8 +37,13 @@ MVP SaaS para organizar investigaciones multiárea con trazabilidad desde la fue
 - Fragmentación reproducible del texto para preparar búsqueda semántica y RAG.
 - Transcripción local de audio y vídeo con `faster-whisper`, detección de idioma y timestamps.
 - Segmentos y palabras temporizadas persistidos en PostgreSQL con RLS forzada.
+- Visor audiovisual con búsqueda, reproducción desde cada timestamp y descarga SRT/VTT.
 - Ejecución Whisper por CPU y perfil CUDA opcional mediante Docker Compose.
 - Reconciliación automática de objetos incompletos y actualización visual durante trabajos activos.
+- Progreso Whisper en vivo por NDJSON: fase, porcentaje, timeline procesada, ETA aproximada y latidos durante inferencias largas.
+- Previsualización audiovisual autenticada con streaming HTTP `Range`, sin depender de redirecciones públicas de MinIO.
+- Ingesta y transcripción de vídeo MPEG/MPG; la reproducción en navegador sigue dependiendo del códec incorporado en el archivo.
+- Normalización segura de archivos MP3 disfrazados con sufijo `.mpeg`/`.mpg`, conservando su MIME real como audio.
 
 Los conectores externos, IA generativa, OCR, facturación y producción audiovisual permanecen en el roadmap. El estado completo está en [Docs/Topics-Check-list.md](Docs/Topics-Check-list.md).
 
@@ -91,6 +96,25 @@ La migración 7 añade dictámenes antimalware, documentos extraídos y fragment
 
 La migración 8 añade transcripciones y segmentos audiovisuales con RLS forzada. Al arrancar el worker v0.6.2, la reconciliación crea de forma idempotente los trabajos de escaneo, extracción o transcripción que falten.
 
+La v0.6.4 no añade migraciones. Incorpora progreso vivo entre Whisper, worker, PostgreSQL y frontend; además sirve audio/vídeo en el mismo origen con soporte de rangos, acepta `.mpeg`/`.mpg` y corrige los MP3 con extensión compuesta `.mp3.mpeg`.
+
+## Actualizar desde v0.6.2 o v0.6.3
+
+Espera a que termine cualquier transcripción activa y después reconstruye los tres servicios modificados:
+
+```powershell
+docker compose stop ingestion-worker transcriber research-studio
+npm install
+docker compose build --no-cache transcriber
+docker compose build ingestion-worker research-studio
+docker compose up -d --force-recreate transcriber
+docker compose up -d --force-recreate ingestion-worker research-studio
+npm test
+docker compose ps
+```
+
+No ejecutes `db:migrate`: el progreso detallado reutiliza el campo JSONB existente de los trabajos.
+
 ## Actualizar desde v0.6.1
 
 Detén primero el worker anterior para que no consuma trabajos de la nueva versión:
@@ -111,6 +135,8 @@ docker compose ps
 ```
 
 El primer trabajo puede tardar porque `faster-whisper` descarga el modelo configurado al volumen `whisper-models-v062`. El worker nuevo repara automáticamente objetos que no tengan dictamen, extracción o transcripción persistida.
+
+La imagen fija explícitamente la dependencia HTTP `requests` utilizada por `faster-whisper`; reconstruye `transcriber` sin reutilizar la imagen anterior después de aplicar este hotfix.
 
 ## Actualizar desde v0.6.0
 
@@ -263,7 +289,7 @@ npm run worker:dev
 
 Los comandos `npm run test:clamav`, `npm run test:transcriber` y `npm run ingestion:health-check` se ejecutan desde el host. Por ello, `.env` debe conservar `REDIS_URL=redis://localhost:6379`, `CLAMAV_HOST=localhost` y `TRANSCRIBER_URL=http://127.0.0.1:8088`. Compose sustituye automáticamente esos valores por `redis`, `clamav` y `http://transcriber:8080` dentro de los contenedores; esos nombres privados no resuelven desde PowerShell.
 
-La v0.6.2 ejecuta `upload → firma → ClamAV → extracción|transcripción → ready`. Un resultado infectado termina en `quarantined` y no obtiene URL de descarga. Los documentos producen texto y fragmentos; audio y vídeo producen texto, segmentos, palabras y timestamps. Los PDF basados únicamente en imágenes continúan señalados para OCR.
+La v0.6.4 ejecuta `upload → firma → ClamAV → extracción|transcripción → ready`. Un resultado infectado termina en `quarantined` y no obtiene URL de descarga. Los documentos producen texto y fragmentos; audio y vídeo producen texto, segmentos, palabras y timestamps. Los PDF basados únicamente en imágenes continúan señalados para OCR.
 
 CPU es el perfil predeterminado. Para utilizar CUDA:
 
@@ -283,6 +309,7 @@ npm run test:structure
 npm run test:identity
 npm run test:security
 npm run test:ingestion
+npm run test:subtitles
 npm run test:clamav
 npm run test:transcriber
 npm run typecheck:worker
@@ -309,6 +336,8 @@ npm run test:db
 | `GET/POST` | `/api/projects/:id/uploads` | Listar o cargar objetos de investigación |
 | `GET` | `/api/objects/:id/download` | Descarga privada mediante URL temporal firmada |
 | `GET` | `/api/objects/:id/transcription` | Texto completo y segmentos temporizados del objeto |
+| `GET` | `/api/objects/:id/transcription?format=srt` | Subtítulos SubRip descargables |
+| `GET` | `/api/objects/:id/transcription?format=vtt` | Subtítulos WebVTT descargables |
 | `POST` | `/api/jobs/:id/retry` | Reintentar un trabajo fallido o en dead-letter |
 | `GET/POST` | `/api/projects` | Listar y crear investigaciones |
 | `GET/POST` | `/api/workspaces` | Listar y crear workspaces |
@@ -354,6 +383,6 @@ tests/               checklist estructural e integración PostgreSQL
 
 La compilación genera `.next/standalone`. Publica el servicio detrás de Caddy, Nginx o Traefik con HTTPS y deja `AUTH_COOKIE_SECURE=true`. El número total de conexiones es `DATABASE_POOL_MAX × instancias`; ajústalo al límite del servidor o incorpora PgBouncer al escalar horizontalmente.
 
-`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.2 incluye transcripción local, pero todavía no incorpora OCR ni conectores audiovisuales externos. Antes de producción todavía hay que seleccionar OIDC, conectar un gestor de secretos, proteger servicios internos y programar backups coordinados de base de datos, objetos y modelos.
+`AUTH_COOKIE_SECURE=false` solo debe utilizarse durante desarrollo HTTP local. La v0.6.4 incluye transcripción local con progreso vivo, pero todavía no incorpora OCR ni conectores audiovisuales externos. Antes de producción todavía hay que seleccionar OIDC, conectar un gestor de secretos, proteger servicios internos y programar backups coordinados de base de datos, objetos y modelos.
 
 Copyright © 2026 NoRug.es. Todos los derechos reservados.

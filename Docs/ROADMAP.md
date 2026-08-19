@@ -1,6 +1,6 @@
 # Roadmap de producto — NoRug Research Studio
 
-Estado base: **v0.6.2 Audiovisual Transcription**  
+Estado base: **v0.6.4 Media Signature Hotfix**  
 Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable que automatice la investigación, la verificación editorial y la producción de contenidos sin eliminar el control humano.
 
 ## Principios de ejecución
@@ -60,6 +60,8 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - **v0.6.0 Ingestion Foundation:** MinIO/S3, Redis/BullMQ, worker independiente, outbox transaccional, RLS, deduplicación SHA-256, carga privada y descarga temporal.
 - **v0.6.1 Secure Extraction:** firma binaria, ClamAV, cuarentena, migración 7, extracción PDF/DOCX/texto y fragmentos trazables.
 - **v0.6.2 Audiovisual Transcription:** faster-whisper privado, migración 8, idioma, timestamps, palabras, CPU/CUDA y reconciliación automática.
+- **v0.6.3 Live Transcription & Media Streaming:** progreso NDJSON y ETA en frontend, logs de avance, streaming autenticado con rangos y soporte de ingesta MPEG/MPG.
+- **v0.6.4 Media Signature Hotfix:** reconoce MP3 con sufijo `.mpeg`/`.mpg`, persiste el MIME audiovisual real y diferencia errores de firma de errores ClamAV.
 - [x] S3, R2 o MinIO para objetos binarios.
 - [x] Redis y BullMQ para tareas asíncronas.
 - [x] Estados de trabajo, reintentos, idempotencia y dead-letter queue.
@@ -68,6 +70,8 @@ Objetivo: evolucionar el MVP hacia un SaaS multiárea, multiusuario y auditable 
 - [x] Inspección antimalware y cuarentena efectiva.
 - [x] Extracción de texto de PDF, DOCX, TXT, Markdown y CSV.
 - [x] Whisper con timestamps, detección de idioma y segmentos persistentes.
+- [x] Progreso de transcripción visible en vivo, con fase, timeline procesada y ETA aproximada.
+- [x] Reproducción same-origin mediante HTTP Range y compatibilidad de ingesta MPEG/MPG.
 - [x] Perfil CPU por defecto y CUDA opcional mediante Compose.
 - Conectores YouTube, RSS/web y APIs personalizadas.
 - Selección y aprobación humana de fuentes.

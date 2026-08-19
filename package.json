@@ -1,6 +1,6 @@
 {
   "name": "norug-research-studio",
-  "version": "0.6.2",
+  "version": "0.6.4",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -27,9 +27,10 @@
     "test:identity": "node --experimental-strip-types --test tests/identity.unit.test.mjs",
     "test:security": "node --experimental-strip-types --test tests/security.unit.test.mjs",
     "test:ingestion": "node --experimental-strip-types --test tests/ingestion.unit.test.mjs",
+    "test:subtitles": "node --experimental-strip-types --test tests/subtitles.unit.test.mjs",
     "pretest:db": "npm run db:env-check",
     "test:db": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --experimental-strip-types --test tests/postgres.integration.test.mjs",
-    "test": "npm run test:structure && npm run test:identity && npm run test:security && npm run test:ingestion && npm run build",
+    "test": "npm run test:structure && npm run test:identity && npm run test:security && npm run test:ingestion && npm run test:subtitles && npm run build",
     "check": "npm run lint && npm run test"
   },
   "dependencies": {

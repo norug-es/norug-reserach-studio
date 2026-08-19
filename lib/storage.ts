@@ -118,3 +118,25 @@ export async function signedDownloadUrl(bucket: string, key: string, fileName: s
     ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
   }), { expiresIn: 300 });
 }
+
+export async function streamStoredObject(input: {
+  bucket: string;
+  key: string;
+  range?: string;
+  fallbackContentType: string;
+}) {
+  const response = await s3().send(new GetObjectCommand({
+    Bucket: input.bucket,
+    Key: input.key,
+    Range: input.range,
+  }));
+  if (!response.Body) throw new Error("El objeto almacenado no contiene un stream");
+  return {
+    body: response.Body.transformToWebStream(),
+    contentType: response.ContentType || input.fallbackContentType,
+    contentLength: response.ContentLength,
+    contentRange: response.ContentRange,
+    etag: response.ETag,
+    lastModified: response.LastModified,
+  };
+}

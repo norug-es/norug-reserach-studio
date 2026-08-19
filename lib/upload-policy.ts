@@ -10,6 +10,8 @@ const uploadTypes: Record<string, {
   ".wav": { contentType: "audio/wav", aliases: ["audio/x-wav"], category: "audio" },
   ".m4a": { contentType: "audio/mp4", aliases: ["audio/x-m4a"], category: "audio" },
   ".mp4": { contentType: "video/mp4", category: "video" },
+  ".mpeg": { contentType: "video/mpeg", aliases: ["video/mpg", "audio/mpeg"], category: "video" },
+  ".mpg": { contentType: "video/mpeg", aliases: ["video/mpg", "audio/mpeg"], category: "video" },
   ".webm": { contentType: "video/webm", category: "video" },
   ".mov": { contentType: "video/quicktime", category: "video" },
 };
@@ -36,12 +38,16 @@ export function validateUpload(name: string, contentType: string, size: number) 
   }
   const extension = name.includes(".") ? `.${name.split(".").pop()?.toLowerCase()}` : "";
   const policy = uploadTypes[extension];
-  if (!policy) throw new UploadPolicyError("Formato no permitido. Usa PDF, DOCX, TXT, MD, CSV, MP3, WAV, M4A, MP4, WEBM o MOV");
+  if (!policy) throw new UploadPolicyError("Formato no permitido. Usa PDF, DOCX, TXT, MD, CSV, MP3, WAV, M4A, MP4, MPEG, MPG, WEBM o MOV");
   const supplied = contentType.split(";")[0]?.trim().toLowerCase();
   if (supplied && supplied !== "application/octet-stream" && supplied !== policy.contentType &&
       !policy.aliases?.includes(supplied)) {
     throw new UploadPolicyError("El tipo declarado no coincide con la extensión del archivo");
   }
-  return { contentType: policy.contentType, category: policy.category,
+  const compoundMp3 = /\.mp3\.(?:mpeg|mpg)$/i.test(name);
+  const mpegAudio = [".mpeg", ".mpg"].includes(extension) &&
+    (compoundMp3 || supplied === "audio/mpeg");
+  return { contentType: mpegAudio ? "audio/mpeg" : policy.contentType,
+    category: mpegAudio ? "audio" : policy.category,
     originalName: sanitizeUploadName(name), extension };
 }
